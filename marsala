@@ -645,7 +645,7 @@ mateOrientation = FR
 EOF
 
 freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec
-
+sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
 }
 
 function do_ss {
@@ -662,7 +662,7 @@ for i in `seq $ecount`
 do
 	gi=$(($i - 1))
 	echo "do_bwa $session Z${i} ${seqE[$gi]}"
-	do_bwa $session Z${i} ${seqE[$gi]}
+	do_bwa $session Z${i} "${seqE[$gi]}"
 done
 
 # ----------------
