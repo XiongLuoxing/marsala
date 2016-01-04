@@ -1,0 +1,699 @@
+#!/bin/bash
+# A - grandfather
+# F - father
+# E - embyro
+
+# support multiple embrybo samples
+VERSION="v0.0.3 beta, 12.22.2015"
+
+genome=~/lustre1/database/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa
+chromdir=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/Chromosomes
+index=/data1/SX/tianf/database/Homo_sapiens/UCSC/hg19/Sequence/BWAIndex/version0.6.0/genome.fa
+PICARD="java -jar /data1/SX/tianf/software/picard-tools-1.140/picard.jar"
+GATK="java -jar /home/tianf/lustre1/software/GATK/GenomeAnalysisTK.jar"
+gdata=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/GATK_known_sites
+
+usage()
+{
+cat << BROWSERS
+Program: Marsala
+Version: $VERSION
+Usage:   `basename $0` [options] -dg dg.fq -dp dp.fq -de E1_R1.fq,E2_R1.fq,E3_R1.fq+E1_R2.fq,E2_R2.fq,E3_R2.fq
+         A: Grandparent or Disease-child  F: Disease-parent  E: Embryo
+Options:
+	[Sequencing Data]
+	 -l sample list for sequencing files [NULL] (prior than -dg -dp -p1 -p2 e.g. foo.fq.gz A)
+	 -dg fq(if PE, seperate with +) file of Grandparent or Disease-child
+	 -dp fq(if PE, seperate with +) file of Disease-parent
+	 -de fq(if PE, seperate with +) file of Embryo
+         -p1 fq(if PE, seperate with +) file of polar body 1
+         -p2 fq(if PE, seperate with +) file of polar body 2
+
+	[Interval for Analysis]
+	 -r specify a region for SNP anlaysis (e.g. chr1:20000-90000) [NULL] (prior than -b)
+	 -b specify a region in bed format [NULL]
+
+	[Work and Performance]
+	 -n session name [study]
+	 -O output prfix [.]
+         -p number of threads [1]
+         -m size of memery [4g]
+
+	[About]
+	 -h show this help information
+         -v show version
+
+BROWSERS
+
+exit 1
+}
+
+[ $# -eq 0 ] && usage
+
+### default settings
+cpu=1
+mem=4g
+session=study
+OUT=.
+
+### initial values
+list_mode=0
+np1_num=0
+np2_num=0
+###
+
+###getopt###
+ARGS=`getopt -o l:r:b:n:p:m:O:hv -a -l dg:,dp:,de:,p1:,p2:,help -- "$@"`
+#eval set -- $ARGS
+
+while true
+do
+  case $1 in
+    -l)
+      if [[ $2 = "" ]]
+      then
+	exit
+      fi
+      #echo "Input from sample list: $2"
+      splst=$2
+      list_mode=1
+      ecount=`awk '$2~/E[0-9]+/ {print $2}' $splst | sort -u | wc -l`
+
+      seqA=`awk '$2=="A" {print $1}' $splst | paste -s -d ' '`
+      seqF=`awk '$2=="F" {print $1}' $splst | paste -s -d ' '`
+      #seqE=`awk '$2~/E[0-9]+/ {print $1}' $splst | paste -s -d ' '`
+      i=0	# input embryo
+      while read emin
+      do
+	#echo $emin
+	seqE[$i]=`awk -v ks=$emin '$2==ks {print $1}' $splst | paste -s -d ' '`
+	i=$(($i + 1))
+      done < <(awk '$2~/E[0-9]+/ && !seen[$2]++ {print $2}' $splst)
+      ecount=$i
+
+      i=0       # input polar body 1
+      while read pbin
+      do
+        #echo $pbin
+        np1_seq[$i]=`awk -v ks=$pbin '$2==ks {print $1}' $splst | paste -s -d ' '`
+        i=$(($i + 1))
+      done < <(awk '$2~/PB[0-9]+1/ && !seen[$2]++ {print $2}' $splst)
+	#echo ${np1_seq[0]}
+      np1_num=$i
+
+      i=0       # input polar body 2
+      while read pbin
+      do
+        #echo $pbin
+        np2_seq[$i]=`awk -v ks=$pbin '$2==ks {print $1}' $splst | paste -s -d ' '`
+        i=$(($i + 1))
+      done < <(awk '$2~/PB[0-9]+2/ && !seen[$2]++ {print $2}' $splst)
+        #echo ${np2_seq[0]}
+      np2_num=$i
+
+      shift 2
+      ;;
+    -dg)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+
+      if [[ $list_mode -eq 0 ]]	# input from cmd
+      then
+
+      if [[ ! $2 =~ "+" ]]      # single end
+      then
+	echo "Input of Grandparent or Disease-child: $2"
+	echo "Single End"
+	seqA=$2
+      else			# pair end
+	echo "Input of Grandparent or Disease-child: $2" | tr '+' ' '
+	echo "Pair End"
+	seqA=`echo $2 | tr '+' ' '`
+      fi
+
+      fi
+      shift 2
+      ;;
+    -dp)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+
+      if [[ $list_mode -eq 0 ]]	# input from cmd
+      then
+
+      if [[ ! $2 =~ "+" ]]      # single end
+      then
+	echo "Input of Disease-parent: $2"
+	echo "Single End"
+	seqF=$2
+      else			# pair end
+	echo "Input of Disease-parent: $2" | tr '+' ' '
+	seqF=`echo $2 | tr '+' ' '`
+      fi
+
+      fi
+      shift 2
+      ;;
+
+    -de)
+      if [[ $2 = "" ]]
+      then
+	exit
+      fi
+
+      if [[ $list_mode -eq 0 ]] # input from cmd
+      then
+
+      if [[ ! $2 =~ "+" ]]	# single end
+      then
+	echo "Input of embryo: $2"
+	echo "Single End"
+	#`echo $2 | tr ',' '\n'`
+	seqE=(`echo $2 | tr ',' ' '`)
+	ecount=`echo $2 | tr ',' '\n' | wc -l`
+	echo "Number of embryo: $ecount"
+      else			# pair end
+	echo "Input of embryo: $2" | tr '+' ' '
+	echo "Pair End"
+	#`echo $2 | tr ',' '\n'`
+	#`echo $3 | tr ',' '\n'`
+	emb1_seq=(`echo $2 | cut -d '+' -f 1 | tr ',' ' '`)	# mate1
+	emb2_seq=(`echo $2 | cut -d '+' -f 2 | tr ',' ' '`)	# mate2
+	emb1_num=`echo $2 | cut -d '+' -f 1 | tr ',' '\n' | wc -l`
+	emb2_num=`echo $2 | cut -d '+' -f 2 | tr ',' '\n' | wc -l`
+	if [[ $emb1_num -ne $emb2_num ]]
+	then
+		echo -e "\033[31mERROR: Numbers of mate files do not match. ($emb1_num != $emb2_num) [Embryo] \033[0m"
+		exit
+	fi
+	ecount=$emb1_num
+	eindex=$(($ecount - 1))
+	i=0
+        while [[ $i -le $eindex ]]
+	do
+		seqE[$i]="${emb1_seq[$i]} ${emb2_seq[$i]}"
+		i=$(($i + 1))
+	done
+	echo "Number of embryo: $ecount"
+	#echo ${np11_seq[*]}
+	#echo ${np12_seq[*]}
+      fi
+      #echo ${seqE[*]}
+
+      fi
+      shift 2
+      ;;
+    -p1)
+      if [[ $2 = "" ]]
+      then
+	exit
+      fi
+
+      if [[ $list_mode -eq 0 ]] # input from cmd
+      then
+
+      if [[ ! $2 =~ "+" ]]	# single end
+      then
+	echo "Input of polar body 1: $2"
+	echo "Single End"
+	#`echo $2 | tr ',' '\n'`
+	np1_seq=(`echo $2 | tr ',' ' '`)
+	np1_num=`echo $2 | tr ',' '\n' | wc -l`
+	echo "Number of polar body 1: $np1_num"
+      else			# pair end
+	echo "Input of polar body 1: $2" | tr '+' ' '
+	echo "Pair End"
+	#`echo $2 | tr ',' '\n'`
+	#`echo $3 | tr ',' '\n'`
+	np11_seq=(`echo $2 | cut -d '+' -f 1 | tr ',' ' '`)
+	np12_seq=(`echo $2 | cut -d '+' -f 2 | tr ',' ' '`)
+	np11_num=`echo $2 | cut -d '+' -f 1 | tr ',' '\n' | wc -l`
+	np12_num=`echo $2 | cut -d '+' -f 2 | tr ',' '\n' | wc -l`
+	if [[ $np11_num -ne $np12_num ]]
+	then
+		echo -e "\033[31mERROR: Numbers of mate files do not match. [Polar body 1] \033[0m"
+		exit
+	fi
+
+        np1_num=$np11_num
+        np1_index=$(($np1_num - 1))
+        i=0
+        while [[ $i -le $np1_index ]]
+        do
+                np1_seq[$i]="${np11_seq[$i]} ${np12_seq[$i]}"
+                i=$(($i + 1))
+        done
+        echo "Number of polar body 1: $np1_num"
+	#echo ${np1_seq[*]}
+
+      fi
+
+      fi
+      shift 2
+      ;;
+    -p2)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+
+      if [[ $list_mode -eq 0 ]] # input from cmd
+      then
+
+      if [[ ! $2 =~ "+" ]]	# single end
+      then
+	echo "Input of polar body 2: $2"
+	echo "Single End"
+	#`echo $2 | tr ',' '\n'`
+	np2_seq=(`echo $2 | tr ',' ' '`)
+	np2_num=`echo $2 | tr ',' '\n' | wc -l`
+	echo "Number of polar body 2: $np2_num"
+      else			# pair end
+	echo "Input of polar body 2: $2" | tr '+' ' '
+	echo "Pair End"
+	#`echo $2 | tr ',' '\n'`
+	#`echo $3 | tr ',' '\n'`
+	np21_seq=(`echo $2 | cut -d '+' -f 1 | tr ',' ' '`)
+	np22_seq=(`echo $2 | cut -d '+' -f 2 | tr ',' ' '`)
+	np21_num=`echo $2 | cut -d '+' -f 1 | tr ',' '\n' | wc -l`
+	np22_num=`echo $2 | cut -d '+' -f 2 | tr ',' '\n' | wc -l`
+	if [[ $np21_num -ne $np22_num ]]
+	then
+		echo -e "\033[31mERROR: Numbers of mate files do not match. [Polar body 2] \033[0m"
+		exit
+	fi
+
+        np2_num=$np21_num
+        np2_index=$(($np2_num - 1))
+        i=0
+        while [[ $i -le $np2_index ]]
+        do
+                np2_seq[$i]="${np21_seq[$i]} ${np22_seq[$i]}"
+                i=$(($i + 1))
+        done
+        echo "Number of polar body 2: $np2_num"
+        #echo ${np2_seq[*]}
+      fi
+
+      fi
+      shift 2
+      ;;
+
+    -v)
+      echo $VERSION
+      echo "Written by Feng Tian, XingLuo Xiong"
+      echo "Please cite: >>>>>>>>>"
+      exit
+      ;;
+    -b)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+      echo "Target file: $2"
+      chr=`head -n 1 $2 | cut -f 1`
+      posl=$((`head -n 1 $2 | cut -f 2` - 1 ))
+      posr=`head -n 1 $2 | cut -f 3`
+      shift 2
+      ;;
+    -r)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+      echo "Target region: $2"
+      chr=`echo $2 | cut -d ':' -f 1`
+      posl=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 1`
+      posr=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 2`
+      shift 2
+      #echo "$chr $posl $posr"
+      ;;
+
+    -n)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+      echo "Session name: $2"
+      session=$2
+      shift 2
+      ;;
+    -p)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+      echo "Threads: $2"
+      cpu=$2
+      shift 2
+      ;;
+    -m)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+      echo "Memory: $2"
+      mem=$2
+      shift 2
+      ;;
+
+    -O)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+      echo "Output prefix: $2"
+      OUT=$2
+      shift 2
+      ;;
+    -h)
+      usage
+      ;;
+    --help)
+      usage
+      ;;
+
+    *)
+      break
+      ;;
+  esac
+done
+###getopt###
+
+if [[ ! $np1_num -eq $np2_num ]]
+then
+	echo -e "\033[31mERROR: Numbers of Polar body 1 and Polar Body 2 do not match. \033[0m"
+	exit
+fi
+
+if [[ $list_mode -eq 1 ]]	# input from sample list
+then
+	echo "Input from sample list"
+elif [[ $list_mode -eq 0 ]]	# input from cmd
+then
+	echo "Input from command line"
+#	shift $(expr $OPTIND - 1 )
+#	ecount=$(($#/2-2))
+
+fi
+
+echo -e "Sequence_A\n$seqA"
+echo -e "Sequence_F\n$seqF"
+#echo -e "Sequence_E\n${seqE[*]}"
+echo -e "Sequence_E"
+for i in `seq $ecount`
+do
+	gid=$(($i - 1))
+	echo ${seqE[$gid]}
+done
+
+echo -e "Polar Body 1"
+for i in `seq $np1_num`
+do
+	gid=$(($i - 1))
+	echo ${np1_seq[$gid]}
+done
+
+echo -e "Polar Body 2"
+for i in `seq $np1_num`
+do
+	gid=$(($i - 1))
+	echo ${np2_seq[$gid]}
+done
+
+
+
+if [[ $seqA = "" ]] || [[ $seqF = "" ]] || [[ $seqE = "" ]]
+then
+	echo -e "\033[31mERROR: Input incomplete. \033[0m"
+	exit
+fi
+
+echo "Polar body count: $np1_num"
+echo "Embryo count: $ecount"
+
+
+if [[ $np1_num -ne 0 ]] && [[ ! $np1_num -eq $ecount ]]
+then
+	echo -e "\033[31mERROR: Numbers of Polar body and embryo do not match. \033[0m"
+	exit
+fi
+
+### After check
+echo "---------"
+mkdir -p $OUT
+echo "[Marsala] `date`" > $OUT/run_log.txt
+###
+
+### Part1: mapping reads
+function do_bwa {
+bpp=$1
+id=$2
+bam=$3
+
+echo ${bpp}_$id
+echo "Mapping..."
+ID=ID_${bpp}_$id
+PL=ILLUMINA
+LB=LB_${bpp}_$id
+SM=SM_${bpp}_$id
+rg="@RG\tID:$ID\tPL:$PL\tLB:$LB\tSM:$SM"
+bwa mem -v 0 -R $rg -M -t $cpu $index $bam | samtools view -q 1 -bS -@ $cpu - | samtools sort -@ $cpu -m $mem - $OUT/${bpp}_${id}_sorted 2>> $OUT/run_log.txt	# XXX samtools 1.2
+echo "Mark duplicates..."
+$PICARD MarkDuplicates I=$OUT/${bpp}_${id}_sorted.bam O=$OUT/${bpp}_${id}_rmdup.bam M=$OUT/${bpp}_${id}_rmdup.txt REMOVE_DUPLICATES=true 2>> $OUT/run_log.txt
+samtools index $OUT/${bpp}_${id}_rmdup.bam
+}
+
+### Part2: re-ca indels
+function do_GATK {
+spp=$1
+echo $spp
+
+echo "Local realignment..."
+$GATK -T RealignerTargetCreator -R $genome -I $OUT/${spp}_rmdup.bam -known $gdata/1000G_phase1.indels.hg19.sites.vcf -known $gdata/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf -o $OUT/${spp}_realignment_targets.list -L ${chr}:${posl}-${posr} 2>> $OUT/run_log.txt
+$GATK -T IndelRealigner -R $genome -I $OUT/${spp}_rmdup.bam -targetIntervals $OUT/${spp}_realignment_targets.list -known $gdata/1000G_phase1.indels.hg19.sites.vcf -known $gdata/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf -o $OUT/${spp}_realigned_reads.bam -L ${chr}:${posl}-${posr} 2>> $OUT/run_log.txt
+
+echo "Recalibrate base quality scores = run BQSR"
+$GATK -T BaseRecalibrator -R $genome -I $OUT/${spp}_realigned_reads.bam -knownSites $gdata/dbsnp_138.hg19.vcf -knownSites $gdata/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf -knownSites $gdata/1000G_phase1.indels.hg19.sites.vcf -o $OUT/${spp}_recal_data.table -L ${chr}:${posl}-${posr} 2>> $OUT/run_log.txt
+
+$GATK -T BaseRecalibrator -R $genome -I $OUT/${spp}_realigned_reads.bam -knownSites $gdata/dbsnp_138.hg19.vcf -knownSites $gdata/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf -knownSites $gdata/1000G_phase1.indels.hg19.sites.vcf -BQSR $OUT/${spp}_recal_data.table -o $OUT/${spp}_post_recal_data.table -L ${chr}:${posl}-${posr} 2>> $OUT/run_log.txt
+
+##$GATK -T AnalyzeCovariates -R $genome -before $OUT/${spp}_recal_data.table -after $OUT/${spp}_post_recal_data.table -plots $OUT/${spp}_recalibration_plots.pdf -L ${chr}:${posl}-${posr}
+
+$GATK -T PrintReads -R $genome -I $OUT/${spp}_realigned_reads.bam -BQSR $OUT/${spp}_recal_data.table -o $OUT/${spp}_recal_reads.bam -L ${chr}:${posl}-${posr} 2>> $OUT/run_log.txt
+
+$GATK -T HaplotypeCaller -nct $cpu -R $genome -I $OUT/${spp}_recal_reads.bam --emitRefConfidence GVCF -stand_call_conf 30 -stand_emit_conf 10 --dbsnp $gdata/dbsnp_138.hg19.vcf -o $OUT/${spp}.raw_snps.indels.g.vcf -L ${chr}:${posl}-${posr} 2>> $OUT/run_log.txt
+#$GATK -T SelectVariants -R $genome -selectType SNP -V $OUT/${spp}.raw_snps.indels.g.vcf -o $OUT/${spp}.raw_snps.g.vcf
+#$GATK -T VariantFiltration -R $genome -V $OUT/${spp}.raw_snps.g.vcf --filterExpression "DP < 10 || QD < 2.0 || FS > 60.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" --filterName "my_snp_filter" -o $OUT/${spp}.raw_snps.filtered.vcf
+#grep -e '^#' -e 'PASS' $OUT/${spp}.raw_snps.filtered.vcf > $OUT/${spp}.raw_snps.ftd.vcf
+
+}
+
+#do_GATK ${session}_A
+#do_GATK ${session}_F
+#do_GATK ${session}_E
+
+wait
+
+### Part3: call snp
+function do_call_snp {
+echo "Part2..."
+
+pp=$1
+
+#echo "$GATK -T GenotypeGVCFs -R $genome --variant $OUT/${pp}_A.raw_snps.indels.g.vcf --variant $OUT/${pp}_F.raw_snps.indels.g.vcf $embyro_vcf -o $OUT/${pp}_AFE.raw_snps.indels.vcf"
+###polar body####
+rm ${OUT}/${pp}_all.vcf.list
+for sample in A F
+do
+        echo $OUT/${pp}_${sample}.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
+done
+for i in `seq ${np1_num}`
+do
+        echo $OUT/${pp}_PB${i}1.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
+        echo $OUT/${pp}_PB${i}2.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
+done
+for e in `seq $ecount`
+do
+                echo $OUT/${pp}_Z${e}.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
+done
+
+$GATK -T GenotypeGVCFs -R $genome --variant ${OUT}/${pp}_all.vcf.list -o $OUT/${pp}_AFE.raw_snps.indels.vcf 2>> $OUT/run_log.txt
+$GATK -T SelectVariants -R $genome -selectType SNP -V $OUT/${pp}_AFE.raw_snps.indels.vcf -o $OUT/${pp}_AFE.raw_snps.vcf 2>> $OUT/run_log.txt
+$GATK -T VariantFiltration -R $genome -V $OUT/${pp}_AFE.raw_snps.vcf --filterExpression "DP < 10 || QD < 2.0 || FS > 60.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" --filterName "my_snp_filter" -o $OUT/${pp}_AFE.raw_snps.filtered.vcf 2>> $OUT/run_log.txt
+grep -e '^#' -e 'PASS' $OUT/${pp}_AFE.raw_snps.filtered.vcf > $OUT/${pp}_AFE.raw_snps.ftd.vcf
+# Note the order of the column
+#bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' $OUT/${pp}_AFE.raw_snps.ftd.vcf | awk '{s=$6;$6=$7;$7=s;print $0}' OFS="\t" > $OUT/${pp}_GT.txt
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' $OUT/${pp}_AFE.raw_snps.ftd.vcf > $OUT/${pp}_GT.txt
+# chrX	68162230	G	T	T/T	G/T	G/G
+# 					A	F	PB11	PB12	...	PB21	PB22
+# 1	2		3	4	5	6	7	8
+}
+
+#do_call_snp $session "$OUT/${session}_A_recal_reads.bam $OUT/${session}_F_recal_reads.bam $OUT/${session}_E_recal_reads.bam"
+
+# part4 pahsing
+function do_phasing {
+echo "Part3..."
+pp=$1
+
+# poly body
+if [[ $np1_num -ne 0 ]]
+then
+
+echo -e "Session\tID\tchr\tleft\tright\trisk\tall\tratio\tstate" > $OUT/${pp}_report_pb.txt
+for i in `seq $np1_num`	# each embryo
+do
+	cla=`echo "5+$i*2" | bc -l`
+	clb=`echo "6+$i*2" | bc -l`
+	#echo "awk -v ks=$clm '$0!~/\.\/\./ && $5!=$6 && $6!=$ks' $OUT/${pp}_GT.txt > $OUT/${pp}_GT_${i}.diff"
+	cut -f 1-6,$cla,$clb $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $7!=$8 && ($7==$3"/"$3||$7==$4"/"$4) && ($8==$3"/"$3||$8==$4"/"$4)' > $OUT/${pp}_GT_${i}_pb.diff
+	## chrX    68162230        G       T       T/T     G/T     G/G	X/X
+	## chrX    68162230        G       T       T/T     G/T     T/T	X/X
+	rm -f $OUT/${pp}_GT_${i}_pb.stat
+	while read vchr vpos vref valt v1 v2 v3 v4
+	do
+		cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
+		cm34=`comm -12 <(echo $v3 | tr '/' '\n' | sort) <(echo $v4 | tr '/' '\n' | sort)`
+		echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v3\t$v4\t$cm12\t$cm34" >> $OUT/${pp}_GT_${i}_pb.stat
+	# chrX    68162230        G       T       T/T     G/T     T/T	X/X	T       T
+	done < $OUT/${pp}_GT_${i}_pb.diff
+
+	# avoid fasle negative
+	awk '$5!=$3"/"$3 && $9!="" && $10!="" ' $OUT/${pp}_GT_${i}_pb.stat > $OUT/${pp}_GT_${i}_pb.stata	# all
+	awk '$5!=$3"/"$3 && $9!="" && $10!="" && $9!=$10' $OUT/${pp}_GT_${i}_pb.stat > $OUT/${pp}_GT_${i}_pb.stats # risk
+	n=`cat $OUT/${pp}_GT_${i}.stats | wc -l`
+	N=`cat $OUT/${pp}_GT_${i}.stata | wc -l`
+
+	rt=`awk -v ka=$n -v kb=$N '{qwe=ka/kb;if(qwe<0.2){res="Normal"}else if(qwe>0.8){res="Bad"};print qwe"\t"res}' <<< ""`
+	echo -e "$n / $N = $rt"
+	echo -e "$session\t${i}\t$chr\t$posl\t$posr\t$n\t$N\t$rt" >> $OUT/${pp}_report_pb.txt
+done
+
+fi
+
+# embryo
+echo -e "Session\tID\tchr\tleft\tright\trisk\tall\tratio\tstate" > $OUT/${pp}_report.txt
+for i in `seq $ecount`	# each embryo
+do
+	clm=`echo "6+$np1_num*2+$i" | bc -l`
+	#echo "awk -v ks=$clm '$0!~/\.\/\./ && $5!=$6 && $6!=$ks' $OUT/${pp}_GT.txt > $OUT/${pp}_GT_${i}.diff"
+	cut -f 1-6,$clm $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$7' > $OUT/${pp}_GT_${i}.diff
+	## chrX    68162230        G       T       T/T     G/T     G/G
+	## chrX    68162230        G       T       T/T     G/T     T/T
+	rm -f $OUT/${pp}_GT_${i}.stat
+	while read vchr vpos vref valt v1 v2 v3
+	do
+		cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
+		cm23=`comm -12 <(echo $v2 | tr '/' '\n' | sort) <(echo $v3 | tr '/' '\n' | sort)`
+		echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v3\t$cm12\t$cm23" >> $OUT/${pp}_GT_${i}.stat
+	done < $OUT/${pp}_GT_${i}.diff
+
+	awk '$5!=$3"/"$3 && $8!="" && $9!="" ' $OUT/${pp}_GT_${i}.stat > $OUT/${pp}_GT_${i}.stata
+	awk '$5!=$3"/"$3 && $8!="" && $9!="" && $8==$9' $OUT/${pp}_GT_${i}.stat > $OUT/${pp}_GT_${i}.stats	# avoid fasle negative
+	n=`cat $OUT/${pp}_GT_${i}.stats | wc -l`
+	N=`cat $OUT/${pp}_GT_${i}.stata | wc -l`
+
+	rt=`awk -v ka=$n -v kb=$N '{qwe=ka/kb;if(qwe<0.2){res="Normal"}else if(qwe>0.8){res="Bad"};print qwe"\t"res}' <<< ""`
+	echo -e "$n / $N = $rt"
+	echo -e "$session\t${i}\t$chr\t$posl\t$posr\t$n\t$N\t$rt" >> $OUT/${pp}_report.txt
+
+done
+
+}
+
+#do_phasing $session
+
+# part5 call CNV
+function do_call_cnv {
+echo "Part4..."
+fpp=$1
+mkdir -p $OUT/${session}_cnv/$fpp
+
+bin=500000
+
+cat > $OUT/${session}_cnv/$fpp/${fpp}_XY.freec  << EOF
+
+[general]
+
+chrLenFile = `pwd`/hg19_len.txt
+degree = 3
+ploidy = 2
+chrFiles = $chromdir
+window = $bin
+maxThreads = $cpu
+sex=XY
+BedGraphOutput=TRUE
+outputDir = $OUT/${session}_cnv/$fpp
+
+#breakPointThreshold = -.002;
+#coefficientOfVariation = 0.062
+
+[sample]
+
+mateFile = $OUT/${session}_${fpp}_rmdup.bam
+inputFormat = BAM
+mateOrientation = FR
+
+
+[control]
+
+EOF
+
+freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec
+
+}
+
+function do_ss {
+do_bwa $session A "$seqA"	# "" avoid missing mate2
+do_bwa $session F "$seqF"
+for i in `seq 1 1 $np1_num`
+do
+	gi=$(($i - 1))
+	do_bwa $session PB${i}1 "${np1_seq[$gi]}"	# pb1 from embryo i
+	do_bwa $session PB${i}2 "${np2_seq[$gi]}"	# pb2 from embryo i
+done
+
+for i in `seq $ecount`
+do
+	gi=$(($i - 1))
+	echo "do_bwa $session Z${i} ${seqE[$gi]}"
+	do_bwa $session Z${i} ${seqE[$gi]}
+done
+
+# ----------------
+do_GATK ${session}_A
+do_GATK ${session}_F
+for i in `seq 1 1 $np1_num`
+do
+        do_GATK ${session}_PB${i}1
+        do_GATK ${session}_PB${i}2
+done
+
+for i in `seq $ecount`
+do
+	do_GATK ${session}_Z${i}
+done
+
+wait
+
+# ----------------
+do_call_snp $session
+
+do_phasing $session
+}
+
+do_call_cnv A
+do_call_cnv F
+for i in `seq $ecount`
+do
+	do_call_cnv Z${i}
+done
+
+echo "---------"
+echo "All Done."
+
