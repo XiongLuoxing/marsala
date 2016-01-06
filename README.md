@@ -27,10 +27,9 @@ Next, Marsala compares the genotypes between F and E and estimate the ratio of r
 Finally, Marsala determines whether this E obtains the risk genomic region which contains disease-related mutation. <br />
 
 2. CNV <br />
-
 Marsala estimate the DNA copy number of E and report whether E was normal.
 
-This protocol has been validated in following research:
+This protocol has been validated in following research: <br />
 
 Liying Yan,  Lei Huang,  Liya Xu,  Jin Huang,  Fei Ma,  Xiaohui Zhu,  Yaqiong Tang,  Mingshan Liu, Ying Lian,  Ping Liu,  Rong Li,  Sijia Lu,  Fuchou Tang,  Jie Qiao,   X. Sunney Xie.  Live births after simultaneous avoidance of monogenic diseases and chromosome abnormality by next-generation sequencing with linkage analyses.PNAS 2015 112 (52) 15964-15969
 
