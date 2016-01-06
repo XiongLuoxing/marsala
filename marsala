@@ -676,8 +676,8 @@ mateOrientation = $mateO
 
 EOF
 
-#freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec 2>> $OUT/run_log.txt
-#sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
+freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec 2>> $OUT/run_log.txt
+sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
 }
 
 function do_ss {
