@@ -20,14 +20,13 @@ In addition, users can use sequencing information from polar body 1 (PB1) and po
 
 ## How does Marsala detect variants?
 
-1. SNV
-
+1. SNV <br />
 First, given specific genomic region (less than 2Mbp) Marsala detects SNVs for A, F and E (as well as PB1 and PB2) seperately. <br />
 Then, Marsala compares the genotypes between A amd F and infer which one of the chromosome homologous was passed from A to F. (i.e. risk genomic mate determination) <br />
 Next, Marsala compares the genotypes between F and E and estimate the ratio of risk passed sites to all passed sites. <br />
 Finally, Marsala determines whether this E obtains the risk genomic region which contains disease-related mutation. <br />
 
-2. CNV
+2. CNV <br />
 
 Marsala estimate the DNA copy number of E and report whether E was normal.
 
