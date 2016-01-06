@@ -426,8 +426,6 @@ do
 	echo ${np2_seq[$gid]}
 done
 
-
-
 if [[ $seqA = "" ]] || [[ $seqF = "" ]] || [[ $seqE = "" ]]
 then
 	echo -e "\033[31mERROR: Input incomplete. \033[0m"
@@ -437,12 +435,19 @@ fi
 echo "Polar body count: $np1_num"
 echo "Embryo count: $ecount"
 
-
 if [[ $np1_num -ne 0 ]] && [[ ! $np1_num -eq $ecount ]]
 then
 	echo -e "\033[31mERROR: Numbers of Polar body and embryo do not match. \033[0m"
 	exit
 fi
+
+function do_end {
+seqin=$1
+#echo $seqin
+
+seqot=`echo $seqin | tr ' ' '\n' | wc -l`
+echo $seqot
+}
 
 ### After check
 echo "---------"
@@ -630,9 +635,18 @@ done
 function do_call_cnv {
 echo "Part4..."
 fpp=$1
+mate=$2	# single-end / pair-end
 mkdir -p $OUT/${session}_cnv/$fpp
 
 bin=500000
+
+if [[ $mate -eq 1 ]]
+then
+	mateO=0
+elif [[ $mate -eq 2 ]]
+then
+	mateO=FR
+fi
 
 cat > $OUT/${session}_cnv/$fpp/${fpp}_XY.freec  << EOF
 
@@ -655,15 +669,15 @@ outputDir = $OUT/${session}_cnv/$fpp
 
 mateFile = $OUT/${session}_${fpp}_rmdup.bam
 inputFormat = BAM
-mateOrientation = FR
+mateOrientation = $mateO
 
 
 [control]
 
 EOF
 
-freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec 2>> $OUT/run_log.txt
-sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
+#freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec 2>> $OUT/run_log.txt
+#sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
 }
 
 function do_ss {
@@ -686,7 +700,7 @@ done
 # ----------------
 do_GATK ${session}_A
 do_GATK ${session}_F
-for i in `seq 1 1 $np1_num`
+for i in `seq $np1_num`
 do
         do_GATK ${session}_PB${i}1
         do_GATK ${session}_PB${i}2
@@ -701,18 +715,19 @@ wait
 
 # ----------------
 do_call_snp $session
-}
-do_phasing $session
-#}
 
-function do_sss {
-do_call_cnv A
-do_call_cnv F
+do_phasing $session
+}
+
+
+do_call_cnv A `do_end "$seqA"`
+do_call_cnv F `do_end "$seqF"`
 for i in `seq $ecount`
 do
-	do_call_cnv Z${i}
+	gi=$(($i - 1))
+	do_call_cnv Z${i} `do_end "${seqE[$gi]}"`
 done
-}
+
 
 #do_bwa $session Z4 "${seqE[3]}"
 #do_GATK ${session}_Z4
