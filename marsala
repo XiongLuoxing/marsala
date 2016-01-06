@@ -470,7 +470,7 @@ bwa mem -v 1 -R $rg -M -t $cpu $index $fq > $OUT/${bpp}_${id}.sam 2>> $OUT/run_l
 samtools view -q 1 -bS -@ $cpu $OUT/${bpp}_${id}.sam | samtools sort -@ $cpu -m $mem - $OUT/${bpp}_${id}_sorted 2>> $OUT/run_log.txt	# XXX samtools 1.2
 
 echo "Mark duplicates..."
-$PICARD MarkDuplicates I=$OUT/${bpp}_${id}_sorted.bam O=$OUT/${bpp}_${id}_rmdup.bam M=$OUT/${bpp}_${id}_rmdup.txt REMOVE_DUPLICATES=true 2>> $OUT/run_log.txt
+$PICARD MarkDuplicates I=$OUT/${bpp}_${id}_sorted.bam O=$OUT/${bpp}_${id}_rmdup.bam M=$OUT/${bpp}_${id}_rmdup.txt REMOVE_DUPLICATES=false 2>> $OUT/run_log.txt
 samtools index $OUT/${bpp}_${id}_rmdup.bam
 
 rm -f $OUT/${bpp}_${id}.sam
