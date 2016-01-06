@@ -37,13 +37,17 @@ Liying Yan,  Lei Huang,  Liya Xu,  Jin Huang,  Fei Ma,  Xiaohui Zhu,  Yaqiong Ta
 
 To use marsala, you will need the following programs in your PATH:
 
-bwa
+bwa <br />
+http://bio-bwa.sourceforge.net/
 
-samtools
+samtools [equal or older than v1.2] <br />
+http://samtools.sourceforge.net/
 
-GATK
+GATK <br />
+https://www.broadinstitute.org/gatk/
 
-control-freec
+control-freec <br />
+http://bioinfo-out.curie.fr/projects/freec/
 
 ## Obtaining and intalling Marsala
 
