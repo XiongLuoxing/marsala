@@ -559,7 +559,11 @@ do
 	cla=`echo "5+$i*2" | bc -l`
 	clb=`echo "6+$i*2" | bc -l`
 	#echo "awk -v ks=$clm '$0!~/\.\/\./ && $5!=$6 && $6!=$ks' $OUT/${pp}_GT.txt > $OUT/${pp}_GT_${i}.diff"
-	cut -f 1-6,$cla,$clb $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$3"/"$3 && $6!=$4"/"$4 && ($8==$3"/"$3||$8==$4"/"$4)' > $OUT/${pp}_GT_${i}_pb.diff
+	cut -f 1-6,$cla,$clb $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$3"/"$3 && $6!=$4"/"$4 && ($8==$3"/"$3||$8==$4"/"$4) && $7!=$8 && $4!~/,/' > $OUT/${pp}_GT_${i}_pb.diff
+	# A and F should be diff
+	# F should be heter.
+	# $8 must be homo.
+	# $7!=$8 for F 0/1: PB1 and st1 must be diff
 	## chrX    68162230        G       T       T/T     G/T     G/G	X/X
 	## chrX    68162230        G       T       T/T     G/T     T/T	X/X
 	rm -f $OUT/${pp}_GT_${i}_pb.stat
@@ -568,10 +572,10 @@ do
 		cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
 		pb1_ale1=`echo $v3 | tr '/' '\n' | head -n 1`
 		pb1_ale2=`echo $v3 | tr '/' '\n' | tail -n 1`
-		st1_ov=`sed -e 's/"'$pb1_ale1'" //' -e 's/"'$pb1_ale2'" //' <(yes $v2 | head -n 2 | tr '/' '\n' | paste -s -d ' ')`
+		st1_ov=`sed -e 's/'$pb1_ale1'//' -e 's/'$pb1_ale2'//' <(yes $v2 | head -n 2 | tr '/' '\n' | paste -s -d '')`
 		
 		pb2_alex=`echo $v4 | tr '/' '\n' | sort -u`
-		st2_ov=`echo $st1_ov | sed -e 's/"'$pb2_alex'" //'`
+		st2_ov=`echo $st1_ov | sed -e 's/'$pb2_alex'//'`
 
 		echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v3\t$v4\t$cm12\t$st2_ov" >> $OUT/${pp}_GT_${i}_pb.stat
 	# chrX    68162230        G       T       T/T     G/T     T/T	X/X	T       T
@@ -580,8 +584,8 @@ do
 	# avoid fasle negative
 	awk '$5!=$3"/"$3 && $9!="" && $10!="" ' $OUT/${pp}_GT_${i}_pb.stat > $OUT/${pp}_GT_${i}_pb.stata	# all
 	awk '$5!=$3"/"$3 && $9!="" && $10!="" && $9==$10' $OUT/${pp}_GT_${i}_pb.stat > $OUT/${pp}_GT_${i}_pb.stats # risk
-	n=`cat $OUT/${pp}_GT_${i}.stats | wc -l`
-	N=`cat $OUT/${pp}_GT_${i}.stata | wc -l`
+	n=`cat $OUT/${pp}_GT_${i}_pb.stats | wc -l`
+	N=`cat $OUT/${pp}_GT_${i}_pb.stata | wc -l`
 
 	rt=`awk -v ka=$n -v kb=$N '{qwe=ka/kb;if(qwe<0.2){res="Normal"}else if(qwe>0.8){res="Bad"};print qwe"\t"res}' <<< ""`
 	echo -e "$n / $N = $rt"
@@ -697,10 +701,11 @@ wait
 
 # ----------------
 do_call_snp $session
-
+}
 do_phasing $session
 #}
 
+function do_sss {
 do_call_cnv A
 do_call_cnv F
 for i in `seq $ecount`
@@ -710,6 +715,7 @@ done
 }
 
 #do_bwa $session Z4 "${seqE[3]}"
+#do_GATK ${session}_Z4
 
 echo "---------"
 echo "All Done."
