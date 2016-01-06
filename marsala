@@ -10,8 +10,8 @@ genome=~/lustre1/database/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genom
 chromdir=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/Chromosomes
 chromLen=/data1/SX/tianf/projects/marsala/hg19_len.txt
 index=/data1/SX/tianf/database/Homo_sapiens/UCSC/hg19/Sequence/BWAIndex/version0.6.0/genome.fa
-PICARD="java -jar /data1/SX/tianf/software/picard-tools-1.140/picard.jar"
-GATK="java -jar /home/tianf/lustre1/software/GATK/GenomeAnalysisTK.jar"
+PICARD=/data1/SX/tianf/software/picard-tools-1.140/picard.jar
+GATK=/home/tianf/lustre1/software/GATK/GenomeAnalysisTK.jar
 gdata=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/GATK_known_sites
 
 usage()
@@ -447,6 +447,9 @@ fi
 ### After check
 echo "---------"
 mkdir -p $OUT
+PICARD="java -Xmx${mem} -jar $PICARD"
+GATK="java -Xmx${mem} -jar $GATK"
+
 echo "[Marsala] `date`" > $OUT/run_log.txt
 ###
 
@@ -463,10 +466,14 @@ PL=ILLUMINA
 LB=LB_${bpp}_$id
 SM=SM_${bpp}_$id
 rg="@RG\tID:$ID\tPL:$PL\tLB:$LB\tSM:$SM"
-bwa mem -v 0 -R $rg -M -t $cpu $index $fq | samtools view -q 1 -bS -@ $cpu - | samtools sort -@ $cpu -m $mem - $OUT/${bpp}_${id}_sorted 2>> $OUT/run_log.txt	# XXX samtools 1.2
+bwa mem -v 1 -R $rg -M -t $cpu $index $fq > $OUT/${bpp}_${id}.sam 2>> $OUT/run_log.txt
+samtools view -q 1 -bS -@ $cpu $OUT/${bpp}_${id}.sam | samtools sort -@ $cpu -m $mem - $OUT/${bpp}_${id}_sorted 2>> $OUT/run_log.txt	# XXX samtools 1.2
+
 echo "Mark duplicates..."
 $PICARD MarkDuplicates I=$OUT/${bpp}_${id}_sorted.bam O=$OUT/${bpp}_${id}_rmdup.bam M=$OUT/${bpp}_${id}_rmdup.txt REMOVE_DUPLICATES=true 2>> $OUT/run_log.txt
 samtools index $OUT/${bpp}_${id}_rmdup.bam
+
+rm -f $OUT/${bpp}_${id}.sam
 }
 
 ### Part2: re-ca indels
@@ -651,14 +658,14 @@ mateOrientation = FR
 
 EOF
 
-freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec
+freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec 2>> $OUT/run_log.txt
 sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
 }
 
-#function do_ss {
+function do_ss {
 do_bwa $session A "$seqA"	# "" avoid missing mate2
 do_bwa $session F "$seqF"
-for i in `seq 1 1 $np1_num`
+for i in `seq $np1_num`
 do
 	gi=$(($i - 1))
 	do_bwa $session PB${i}1 "${np1_seq[$gi]}"	# pb1 from embryo i
@@ -700,6 +707,9 @@ for i in `seq $ecount`
 do
 	do_call_cnv Z${i}
 done
+}
+
+#do_bwa $session Z4 "${seqE[3]}"
 
 echo "---------"
 echo "All Done."
