@@ -43,6 +43,9 @@ http://bio-bwa.sourceforge.net/
 samtools [equal or older than v1.2] <br />
 http://samtools.sourceforge.net/
 
+bcftools <br />
+https://samtools.github.io/bcftools/
+
 GATK <br />
 https://www.broadinstitute.org/gatk/
 
