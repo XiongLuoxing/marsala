@@ -542,6 +542,7 @@ grep -e '^#' -e 'PASS' $OUT/${pp}_AFE.raw_snps.filtered.vcf > $OUT/${pp}_AFE.raw
 # Note the order of the column
 #bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' $OUT/${pp}_AFE.raw_snps.ftd.vcf | awk '{s=$6;$6=$7;$7=s;print $0}' OFS="\t" > $OUT/${pp}_GT.txt
 bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' $OUT/${pp}_AFE.raw_snps.ftd.vcf > $OUT/${pp}_GT.txt
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%DP\t]\n' $OUT/${pp}_AFE.raw_snps.ftd.vcf > $OUT/${pp}_DP.txt
 # chrX	68162230	G	T	T/T	G/T	G/G
 # 					A	F	PB11	PB12	...	PB21	PB22
 # 1	2		3	4	5	6	7	8
@@ -608,13 +609,16 @@ do
 	cut -f 1-6,$clm $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$7' > $OUT/${pp}_GT_${i}.diff
 	## chrX    68162230        G       T       T/T     G/T     G/G
 	## chrX    68162230        G       T       T/T     G/T     T/T
+	cut -f 1-6,$clm $OUT/${pp}_DP.txt | awk '$7>2' > $OUT/${pp}_DP_${i}_sel.txt
+	bedtools intersect -a <(awk '{print $1,$2-1,$2,$3,$4,$5,$6,$7}' OFS="\t" $OUT/${pp}_GT_${i}.diff) -b <(awk '{print $1,$2-1,$2,$3,$4,$5,$6,$7}' OFS="\t" $OUT/${pp}_DP_${i}_sel.txt) | cut -f 1,3-8 - > $OUT/${pp}_GT_${i}.diffss
+
 	rm -f $OUT/${pp}_GT_${i}.stat
 	while read vchr vpos vref valt v1 v2 v3
 	do
 		cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
 		cm23=`comm -12 <(echo $v2 | tr '/' '\n' | sort) <(echo $v3 | tr '/' '\n' | sort)`
 		echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v3\t$cm12\t$cm23" >> $OUT/${pp}_GT_${i}.stat
-	done < $OUT/${pp}_GT_${i}.diff
+	done < $OUT/${pp}_GT_${i}.diffss	# DP>2
 
 	awk '$5!=$3"/"$3 && $8!="" && $9!="" ' $OUT/${pp}_GT_${i}.stat > $OUT/${pp}_GT_${i}.stata
 	awk '$5!=$3"/"$3 && $8!="" && $9!="" && $8==$9' $OUT/${pp}_GT_${i}.stat > $OUT/${pp}_GT_${i}.stats	# avoid fasle negative
@@ -715,11 +719,11 @@ wait
 
 # ----------------
 do_call_snp $session
-
-do_phasing $session
 }
+do_phasing $session
 
 
+function do_ss {
 do_call_cnv A `do_end "$seqA"`
 do_call_cnv F `do_end "$seqF"`
 for i in `seq $ecount`
@@ -727,7 +731,7 @@ do
 	gi=$(($i - 1))
 	do_call_cnv Z${i} `do_end "${seqE[$gi]}"`
 done
-
+}
 
 #do_bwa $session Z4 "${seqE[3]}"
 #do_GATK ${session}_Z4
