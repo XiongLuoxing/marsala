@@ -606,7 +606,7 @@ for i in `seq $ecount`	# each embryo
 do
 	clm=`echo "6+$np1_num*2+$i" | bc -l`
 	#echo "awk -v ks=$clm '$0!~/\.\/\./ && $5!=$6 && $6!=$ks' $OUT/${pp}_GT.txt > $OUT/${pp}_GT_${i}.diff"
-	cut -f 1-6,$clm $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$7' > $OUT/${pp}_GT_${i}.diff
+	cut -f 1-6,$clm $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$7 && $4!~/\*/' > $OUT/${pp}_GT_${i}.diff
 	## chrX    68162230        G       T       T/T     G/T     G/G
 	## chrX    68162230        G       T       T/T     G/T     T/T
 	cut -f 1-6,$clm $OUT/${pp}_DP.txt | awk '$7>2' > $OUT/${pp}_DP_${i}_sel.txt
