@@ -635,6 +635,132 @@ done
 
 #do_phasing $session
 
+## plot figure of SNV
+function do_plot_snv_both {
+
+function do_plot_snv {
+i=$1
+
+R --slave << RSCRIPT
+
+dat <- read.table("$OUT/${session}_GT_${i}.stata",header = F,stringsAsFactors = F)
+
+mycol <- c("red","blue","darkgoldenrod1","green")
+
+do_track <- function(dat,pos,id,risk=F) {
+  plot(0,type = "n",xlim = c($posl,$posr),ylim = c(-1,1),yaxt="n", xlab = "", ylab = "")
+  apply(dat,1,function(x){
+    gt <- sort(unlist(strsplit(x[pos+4],split = "/")))
+    lines(x = rep(x[2],2),y = c(0,0.5)+0.01,col=mycol[factor(gt[1],levels = c("A","C","G","T"))])
+    lines(x = rep(x[2],2),y = c(-0.5,0)-0.01,col=mycol[factor(gt[2],levels = c("A","C","G","T"))])
+  })
+  mtext(text = id,side = 2,line = 1)
+  legend(x = "topright",legend = c("A","C","G","T"),fill = mycol,bty = "n")
+  if(risk) {
+    points(x=dat[dat[,8]==dat[,9],2],y=rep(-0.9,sum(dat[,8]==dat[,9])),pch=17,col="red",cex=0.8)
+  }
+}
+
+pdf("$OUT/${session}_${i}_snv.pdf",width = 8,height = 4)
+par(mfrow=c(3,1),mar=c(2,3,1,1),oma=c(3,0,3,0))
+do_track(dat,1,"A")
+do_track(dat,2,"F")
+do_track(dat,3,"E${i}",risk = T)
+
+par(mfrow=c(1,1),mar=c(c(5,4,3,2)+0.1),oma=c(0,0,0,0))
+ks <- sum(dat[,8]==dat[,9])
+ka <- nrow(dat)
+rt <- round(ks / ka,2)
+title(main = "linkage analysis for SNV")
+title(sub = paste("Risk ratio:",ks,"/",ka,"=",rt),cex.sub=0.8)
+if(rt<0.2) {
+  mtext(text = "Normal",side = 1,line = 3.1,col = "blue")
+} else if(rt>0.8) {
+  mtext(text = "Bad",side = 1,line = 3.1,col = "red")
+}
+
+magic <- dev.off()
+
+RSCRIPT
+
+}
+
+#### polar body
+
+function do_plot_snv_pb {
+i=$1
+
+R --slave << RSCRIPT
+
+dat <- read.table("$OUT/${session}_GT_${i}_pb.stata",header = F,stringsAsFactors = F)
+
+mycol <- c("red","blue","darkgoldenrod1","green")
+
+do_track_pb <- function(dat,pos,id,diploid=T,risk=F) {
+  plot(0,type = "n",xlim = c($posl,$posr),ylim = c(-1,1),yaxt="n", xlab = "", ylab = "")
+  apply(dat,1,function(x){
+    gt <- sort(unlist(strsplit(x[pos+4],split = "/")))
+    if(diploid) {
+      lines(x = rep(x[2],2),y = c(0,0.5)+0.01,col=mycol[factor(gt[1],levels = c("A","C","G","T"))])
+      lines(x = rep(x[2],2),y = c(-0.5,0)-0.01,col=mycol[factor(gt[2],levels = c("A","C","G","T"))])
+    } else {
+      lines(x = rep(x[2],2),y = c(-0.25,0.25)+0.01,col=mycol[factor(gt[1],levels = c("A","C","G","T"))])
+    }
+  })
+  mtext(text = id,side = 2,line = 1)
+  legend(x = "topright",legend = c("A","C","G","T"),fill = mycol,bty = "n",cex = 0.62)
+  if(risk) {
+    points(x=dat[dat[,9]==dat[,10],2],y=rep(-0.9,sum(dat[,9]==dat[,10])),pch=17,col="red",cex=0.8)
+  }
+}
+
+pdf("$OUT/${session}_${i}_pb_snv.pdf",width = 8,height = 4)
+par(mfrow=c(4,1),mar=c(2,3,1,1),oma=c(3,0,3,0))
+do_track_pb(dat,1,"A")
+do_track_pb(dat,2,"F")
+do_track_pb(dat,3,"E${i}_PB1")
+do_track_pb(dat,4,"E${i}_PB2",diploid = F,risk = T)
+
+par(mfrow=c(1,1),mar=c(c(5,4,3,2)+0.1),oma=c(0,0,0,0))
+ks <- sum(dat[,9]==dat[,10])
+ka <- nrow(dat)
+rt <- round(ks / ka,2)
+title(main = "linkage analysis for SNV")
+title(sub = paste("Risk ratio:",ks,"/",ka,"=",rt),cex.sub=0.8)
+if(rt<0.2) {
+  mtext(text = "Normal",side = 1,line = 3.1,col = "blue")
+} else if(rt>0.8) {
+  mtext(text = "Bad",side = 1,line = 3.1,col = "red")
+}
+
+magic <- dev.off()
+
+RSCRIPT
+
+}
+
+#### polar body <<< END
+echo "Plot SNV for E..."
+ecount=4
+for i in `seq $ecount`
+do
+	echo "plot $i"
+	do_plot_snv $i
+	#do_plot_snv ${i}_pb
+done
+
+#echo "Done..."
+echo "Plot SNV for PB..."
+np1_num=4
+for i in `seq $np1_num`
+do
+	echo "plot $i pb"
+	do_plot_snv_pb $i
+done
+
+}
+
+
 # part5 call CNV
 function do_call_cnv {
 echo "Part4..."
@@ -720,8 +846,8 @@ wait
 # ----------------
 do_call_snp $session
 }
-do_phasing $session
-
+#do_phasing $session
+do_plot_snv_both
 
 function do_ss {
 do_call_cnv A `do_end "$seqA"`
