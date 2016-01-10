@@ -6,7 +6,7 @@
 # support multiple embrybo samples
 # support polar body
 # suport plot SNV and CNV
-VERSION="v0.0.3 beta, 12.22.2015"
+VERSION="v1.0.0 beta, 01.10.2016"
 
 genome=~/lustre1/database/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa
 chromdir=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/Chromosomes
