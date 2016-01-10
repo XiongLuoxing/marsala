@@ -980,5 +980,13 @@ do_plot_cnv
 
 
 echo "---------"
+rm -f $OUT/${session}_*_sorted.bam 
+rm -f $OUT/${session}_*_rmdup.bam $OUT/${session}_*_rmdup.bam.bai $OUT/${session}_*_rmdup.txt
+rm -f $OUT/${session}_*_realignment_targets.list $OUT/${session}_*_realigned_reads.bam $OUT/${session}_*_realigned_reads.bai 
+rm -f $OUT/${session}_*_recal_data.table $OUT/${session}_*_post_recal_data.table $OUT/${session}_*_recal_reads.bam $OUT/${session}_*_recal_reads.bai
+rm -f $OUT/${session}_*.raw_snps.indels.g.vcf $OUT/${session}_*.raw_snps.indels.g.vcf.idx 
+rm -f $OUT/${session}_AFE.raw_snps.indels.vcf $OUT/${session}_AFE.raw_snps.indels.vcf.idx
+rm -f $OUT/${session}_DP.txt $OUT/${session}_GT_*.diff
+
 echo "All Done."
 
