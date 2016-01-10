@@ -1,0 +1,25 @@
+#!/bin/bash
+
+echo "Setting the path of required files..."
+
+sed -i 's@^chromLen=.*@chromLen='$PWD'/data/hg19_len.txt@' marsala
+sed -i 's@^chr_length=.*@chr_length='$PWD'/data/new_chrlength.txt@' marsala
+sed -i 's@^nor_factor=.*@nor_factor='$PWD'/data/3Mb_nor1_nor_factor_malbac.txt@' marsala
+sed -i 's@^cnv_bin=.*@cnv_bin='$PWD'/data/3Mb.bin@' marsala
+
+echo "Done"
+echo 
+
+echo -e "\033[33mYou also need specify the path of following files or directorys in marsala: \033[0m"
+cat << EOF
+
+genome=[path of hg19 genome]/genome.fa
+chromdir=[path of hg19 genome by chromosome]/Chromosomes
+
+index=[iGenomes hg19 database directory]/BWAIndex/version0.6.0/genome.fa
+PICARD=[path of picard]/picard.jar
+GATK=[path of GTAK]/GenomeAnalysisTK.jar
+gdata=[resource bundle directory of GTAK hg19]
+
+EOF
+
