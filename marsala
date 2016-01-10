@@ -29,7 +29,7 @@ cat << BROWSERS
 Program: Marsala
 Version: $VERSION
 Usage:   `basename $0` [options] -dg dg.fq -dp dp.fq -de E1_R1.fq,E2_R1.fq,E3_R1.fq+E1_R2.fq,E2_R2.fq,E3_R2.fq
-         A: Grandparent or Disease-child  F: Disease-parent  E: Embryo
+         A: Disease-Grandparent or Disease-child  F: Disease-parent  E: Embryo
 Options:
 	[Sequencing Data]
 	 -l sample list for sequencing files [NULL] (prior than -dg -dp -p1 -p2 e.g. foo.fq.gz A)
