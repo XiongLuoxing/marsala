@@ -58,7 +58,16 @@ You can download the latest source release on github.
 
 To install marsala, unpack the tarball and change directory to the package directory as follows:
 
-tar zxvf marsala-0.0.1.tar.gz
+`tar zxvf marsala-0.0.1.tar.gz`
 
-cd marsala-0.0.1
+`cd marsala-0.0.1`
+
+Configure the package, specifying the install path of required tools as needed
+
+`./configure`
+
+## Using Marsala
+
+Please just type marsala for detail help.
+
 
