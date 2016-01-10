@@ -849,12 +849,19 @@ wait
 # ----------------
 do_call_snp $session
 }
-#do_phasing $session
-do_plot_snv_both
+do_phasing $session
+#do_plot_snv_both
 
 function do_ss {
 do_call_cnv A `do_end "$seqA"`
 do_call_cnv F `do_end "$seqF"`
+for i in `seq $np1_num`
+do
+	gi=$(($i - 1))
+	do_call_cnv PB${i}1 `do_end "${np1_seq[$gi]}"`
+	do_call_cnv PB${i}2 `do_end "${np2_seq[$gi]}"`
+done
+
 for i in `seq $ecount`
 do
 	gi=$(($i - 1))
