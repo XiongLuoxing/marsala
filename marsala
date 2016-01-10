@@ -14,6 +14,13 @@ PICARD=/data1/SX/tianf/software/picard-tools-1.140/picard.jar
 GATK=/home/tianf/lustre1/software/GATK/GenomeAnalysisTK.jar
 gdata=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/GATK_known_sites
 
+chr_length=/data1/SX/xionglx/code/new_chrlength.txt
+bin=3Mb
+nor_factor=/data1/SX/xionglx/projects/ivf/marsala/${bin}_nor1_nor_factor_malbac.txt
+cnv_bin=~/lustre1/database/${bin}.bin
+
+
+
 usage()
 {
 cat << BROWSERS
@@ -813,6 +820,105 @@ freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec 2>> $OUT/run_log.txt
 sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
 }
 
+
+function do_plot_cnv {
+
+for sample in `ls $OUT/${session}_cnv`
+do
+	samtools bedcov $cnv_bin ${OUT}/${session}_${sample}_rmdup.bam > ${OUT}/${session}_${sample}_${bin}_cnv.txt
+done
+
+function plot_cnv {
+ty=$1
+num=$2
+
+R --slave  << RSCRIPT
+
+type <- "$ty"
+num <- as.numeric($num)
+
+#setwd("/data1/SX/xionglx/projects/ivf/marsala/${OUT}")
+chrlen <- read.table("$chr_length",header=T,row.names=1)
+nor_factor <- read.table(file="$nor_factor",header=T)
+nor_factor[nor_factor[,4] == 0,4] = -1
+tlength <- sum(chrlen[1,])
+BIN=c("3Mb","500kb"); LBIN=c(3000000, 500000)
+for(bb in 1){
+        bin=BIN[bb];lbin=LBIN[bb];nor="nor2"
+        filenum=2+num
+        pdf(file=paste0("$OUT/${session}_",type,"_cnv.pdf"),width=10,height=filenum)
+        par(mfrow=c(1,1),mar=c(3,1,1,1))
+        xmax = sum(chrlen[rownames(chrlen)==bin,])
+        ymax = 4
+        plot(0,0,ylim=c(-2,(ymax + 1) * filenum),pch=21,cex=0.00001, xlim = c(-xmax/32,xmax),ann=FALSE,axes=FALSE)
+        start= 0; col=1; color = c("midnightblue","indianred")
+        for(jj in c(1:22,"X","Y")){
+                j=paste("chr",jj,sep="")
+                segments(start,-1,start + chrlen[rownames(chrlen)==bin,colnames(chrlen)==j],-1,col=color[col], lwd = 4)
+                col = 3-col
+                text(start + chrlen[rownames(chrlen)==bin,colnames(chrlen)==j]/2, -2, jj , adj = 0.5,cex=0.6)
+                start = start + chrlen[rownames(chrlen)==bin,colnames(chrlen)==j]
+        }
+        row = 0
+        if ( type == "pb" ) {
+                cnvF <- read.table(file="$OUT/${session}_F_3Mb_cnv.txt",header=F, sep="\t")
+                cnvF[,5] <- cnvF[,4] * tlength *2 / (sum(as.numeric(cnvF[,4])) * 3000000)
+                for (pp in 1:num){
+                        cnv1 <- read.table(file=paste("$OUT/${session}_PB", pp, "1_3Mb_cnv.txt", sep=""),header=F, sep="\t")    # polar body 1
+                        cnv2 <- read.table(file=paste("$OUT/${session}_PB", pp, "2_3Mb_cnv.txt", sep=""),header=F, sep="\t")    # polar body 2
+                        cnv1[,5] <- cnv1[,4] * tlength *2 / (sum(as.numeric(cnv1[,4])) * 3000000)
+                        cnv2[,5] <- cnv2[,4] * tlength  / (sum(as.numeric(cnv2[,4])) * 3000000)
+                        cnvZ_pre <- cnvF
+                        cnvZ_pre[,5] <- cnvF[,5]*2 - cnv1[,5] - cnv2[,5]
+                        write.table(cnvZ_pre, file=paste("$OUT/${session}_Z", pp, "_pre_3Mb_nor1.txt", sep=""), quote=F, sep="\t", row.names=F, col.names=F)
+                }
+        }
+
+        for(id in c(num:1,"F","A")){
+                ploidy = 2; mark <- id
+                if (id %in% c("A","F")){
+                        cnv <- read.table(file=paste("$OUT/${session}_", id, "_3Mb_cnv.txt", sep=""),header=F, sep="\t")
+                        cnv[,5] <- cnv[,4] * tlength *2 / (sum(as.numeric(cnv[,4])) * 3000000)
+                }else if (type == "Z"){
+                        cnv <- read.table(file=paste("$OUT/${session}_Z", id, "_3Mb_cnv.txt", sep=""),header=F, sep="\t")
+                        cnv[,5] <- cnv[,4] * tlength *2 / (sum(as.numeric(cnv[,4])) * 3000000)
+                        mark <- paste("Z", id, sep="")
+                }else {
+                        cnv <- read.table(file=paste("$OUT/${session}_Z", id, "_pre_3Mb_nor1.txt", sep=""),header=F, sep="\t")
+                        ploidy = 1; mark <- paste("Z_pred", id, sep="")
+                }
+                cnv[,6] <- cnv[,5] / nor_factor[,4]
+                col = 1; start = 0; column = 6; zoom = 0.3; ymax = 4
+                cnv[cnv[,column] >= ymax,column] = ymax; cnv[cnv[,6] < 0,6] <- 0;
+                for(j in c(paste("chr",c(1:22,"X","Y"), sep=""))){
+                        i = which(((cnv[,1]==j) * (cnv[,column] != 0)) == 1)
+                        points(cnv[i,2] + start,cnv[i,column] + 1 + (ymax + 1)* row,pch=16,cex=zoom,col = color[col])
+                        col = 3 - col; start = start + chrlen[rownames(chrlen)==bin,colnames(chrlen)==j]
+                }
+                axis(side=2,at=c(1 + (ymax + 1)* row, 3 + (ymax + 1)* row, 5 + (ymax + 1)* row), tcl=-0.3,labels=c("0","2","4"),pos=0, cex.axis=0.6,mgp=c(0.6,0.2,0))
+                segments(0,2 + (ymax + 1)* row,xmax,2 + (ymax + 1)* row,lty="dotted")
+                segments(0,3 + (ymax + 1)* row,xmax,3 + (ymax + 1)* row,lty="dotted")
+                segments(0,4 + (ymax + 1)* row,xmax,4 + (ymax + 1)* row,lty="dotted")
+                rect(0,1 - 0.1 + (ymax + 1)* row,xmax,5 + 0.1 + (ymax + 1)* row)
+                text(-xmax/24,3 + (ymax + 1)* row, mark, cex=0.6)
+#                text(100000, ymax + 1.1 + (ymax + 1)* row, paste(id," ",bin," ",nor,"  mapped_depth:",round(mapped_depth,4),"  coverage:",round(coverage,4),sep=" "),adj=0,cex=0.6)
+                row = row + 1
+        }
+        dev.off()
+}
+
+RSCRIPT
+
+}
+
+plot_cnv pb $np1_num
+plot_cnv Z $ecount
+
+}
+
+
+####### Run
+
 function do_ss {
 do_bwa $session A "$seqA"	# "" avoid missing mate2
 do_bwa $session F "$seqF"
@@ -848,9 +954,10 @@ wait
 
 # ----------------
 do_call_snp $session
-}
+
 do_phasing $session
-#do_plot_snv_both
+do_plot_snv_both
+}
 
 function do_ss {
 do_call_cnv A `do_end "$seqA"`
@@ -868,6 +975,8 @@ do
 	do_call_cnv Z${i} `do_end "${seqE[$gi]}"`
 done
 }
+
+do_plot_cnv
 
 #do_bwa $session Z4 "${seqE[3]}"
 #do_GATK ${session}_Z4
