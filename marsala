@@ -913,7 +913,11 @@ RSCRIPT
 
 }
 
-plot_cnv pb $np1_num
+if [[ $np1_num -gt 0 ]]
+then
+	plot_cnv pb $np1_num
+fi
+
 plot_cnv Z $ecount
 
 }
