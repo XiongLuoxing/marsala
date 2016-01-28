@@ -484,7 +484,7 @@ bwa mem -v 1 -R $rg -M -t $cpu $index $fq > $OUT/${bpp}_${id}.sam 2>> $OUT/run_l
 samtools view -q 1 -bS -@ $cpu $OUT/${bpp}_${id}.sam | samtools sort -@ $cpu -m $mem - $OUT/${bpp}_${id}_sorted 2>> $OUT/run_log.txt	# XXX samtools 1.2
 
 echo "Mark duplicates..."
-MEM_value= `echo $mem | tr -d 'gG'`
+MEM_value=`echo $mem | tr -d 'gG'`
 picard_MR=$(( $MEM_value * 250000 ))
 picard_MF=$(( `ulimit -n` - 20 ))
 $PICARD MarkDuplicates I=$OUT/${bpp}_${id}_sorted.bam O=$OUT/${bpp}_${id}_rmdup.bam M=$OUT/${bpp}_${id}_rmdup.txt REMOVE_DUPLICATES=true MAX_RECORDS_IN_RAM=$picard_MR MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=$picard_MF 2>> $OUT/run_log.txt
