@@ -1,5 +1,5 @@
 # marsala
-Welcome to marsala
+Welcome to marsala. <br />
 The main site was http://xielab.github.io/marsala
 
 ## What is Marsala?
