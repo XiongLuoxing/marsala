@@ -1,13 +1,17 @@
 #!/bin/bash
 # A - grandfather
-# F - father
+# F - disease parent
+# N - normal parent
 # E - embyro
 
 # support multiple embrybo samples
 # support polar body
 # suport plot SNV and CNV
+# support both parents mode
+
 set -x
-VERSION="v1.0.0 beta, 01.10.2016"
+VERSION="v1.0.0 beta, 03.16.2016"
+AUTHOR_LIST="Feng Tian, Luoxing Xiong"
 
 genome=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa
 chromdir=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/Chromosomes
@@ -33,17 +37,19 @@ cat << BROWSERS
 Program: Marsala
 Version: $VERSION
 Usage:   `basename $0` [options] -dg dg.fq -dp dp.fq -de E1_R1.fq,E2_R1.fq,E3_R1.fq+E1_R2.fq,E2_R2.fq,E3_R2.fq
-         A: Disease-Grandparent or Disease-child  F: Disease-parent  E: Embryo
+         A: Disease-Grandparent or Disease-child  F: Disease-parent  N: Normal-parent  E: Embryo
 Options:
 	[Sequencing Data]
 	 -l sample list for sequencing files [NULL] (prior than -dg -dp -p1 -p2 e.g. foo.fq.gz A)
 	 -dg fq(if PE, seperate with +) file of Grandparent or Disease-child
 	 -dp fq(if PE, seperate with +) file of Disease-parent
+	 -dn fq(if PE, seperate with +) file of Normal-parent
 	 -de fq(if PE, seperate with +) file of Embryo
          -p1 fq(if PE, seperate with +) file of polar body 1
          -p2 fq(if PE, seperate with +) file of polar body 2
 
-	[Interval for Analysis]
+	[Target site and Interval for Analysis]
+	 -s specify the location of the putative disease mutation
 	 -r specify a region for SNP anlaysis (e.g. chr1:20000-90000) [NULL] (prior than -b)
 	 -b specify a region in bed format [NULL]
 
@@ -72,12 +78,13 @@ OUT=.
 
 ### initial values
 list_mode=0
+both_mode=0
 np1_num=0
 np2_num=0
 ###
 
 ###getopt###
-ARGS=`getopt -o l:r:b:n:p:m:O:hv -a -l dg:,dp:,de:,p1:,p2:,help -- "$@"`
+ARGS=`getopt -o l:s:r:b:n:p:m:O:hv -a -l dg:,dp:,dn:,de:,p1:,p2:,help -- "$@"`
 #eval set -- $ARGS
 
 while true
@@ -94,8 +101,10 @@ do
       ecount=`awk '$2~/E[0-9]+/ {print $2}' $splst | sort -u | wc -l`
 
       seqA=`awk '$2=="A" {print $1}' $splst | paste -s -d ' '`
-      seqF[0]=`awk '{if($2=="F1" || $2 == "F01"){print $1}}' $splst | paste -s -d ' '`
-      seqF[1]=`awk '{if($2=="F2" || $2 == "F02"){print $1}}' $splst | paste -s -d ' '`
+      seqF=`awk '$2=="F" {print $1}' $splst | paste -s -d ' '`
+      seqN=`awk '$2=="N" {print $1}' $splst | paste -s -d ' '`
+      #seqF[0]=`awk '{if($2=="F1" || $2 == "F01"){print $1}}' $splst | paste -s -d ' '`
+      #seqF[1]=`awk '{if($2=="F2" || $2 == "F02"){print $1}}' $splst | paste -s -d ' '`
       #seqE=`awk '$2~/E[0-9]+/ {print $1}' $splst | paste -s -d ' '`
       i=0	# input embryo
       while read emin
@@ -153,6 +162,7 @@ do
       fi
       shift 2
       ;;
+
     -dp)
       if [[ $2 = "" ]]
       then
@@ -169,11 +179,31 @@ do
 	seqF=(`echo $2 | tr ',' ' '`)
       else			# pair end
 	echo "Input of Disease-parent: $2" | tr '+' ' '
-	seqF=(`echo $2 | tr ',' ' '`)
-	nf=`echo "scale=0; ${#seqF[@]} - 1" | bc`
-	for FF in `seq 0 1 $nf` 
-	do	seqF[$FF]=`echo ${seqF[$FF]} | tr '+' ' '`
-	done
+	seqF=`echo $2 | tr '+' ' '`
+      fi
+
+      fi
+      shift 2
+      ;;
+
+    -dn)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+
+      if [[ $list_mode -eq 0 ]] # input from cmd
+      then
+
+      if [[ ! $2 =~ "+" ]]      # single end
+      then
+        echo "Input of Normal-parent: $2"
+        echo "Single End"
+	seqF=$2
+      else                      # pair end
+        echo "Input of Normal-parent: $2" | tr '+' ' '
+	echo "Pair end"
+	seqF=`echo $2 | tr '+' ' '`
       fi
 
       fi
@@ -326,18 +356,30 @@ do
 
     -v)
       echo $VERSION
-      echo "Written by Feng Tian, Luoxing Xiong"
+      echo "Written by $AUTHOR_LIST"
       echo "Please cite: >>>>>>>>>"
       exit
+      ;;
+
+    -s)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+      echo "Target site: $2"
+      target_chr=`echo $2 | cut -d ':' -f 1`
+      target_pos=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 1`
+      #target_posr=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 2`
+      shift 2
       ;;
     -b)
       if [[ $2 = "" ]]
       then
         exit
       fi
-      echo "Target file: $2"
+      echo "Region file: $2"
       chr=`head -n 1 $2 | cut -f 1`
-      posl=$((`head -n 1 $2 | cut -f 2` - 1 ))
+      posl=$((`head -n 1 $2 | cut -f 2` + 1 ))
       posr=`head -n 1 $2 | cut -f 3`
       shift 2
       ;;
@@ -346,7 +388,7 @@ do
       then
         exit
       fi
-      echo "Target region: $2"
+      echo "Region information: $2"
       chr=`echo $2 | cut -d ':' -f 1`
       posl=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 1`
       posr=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 2`
@@ -425,6 +467,16 @@ fi
 echo -e "Sequence_A\n$seqA"
 echo -e "Sequence_F\n$seqF"
 #echo -e "Sequence_E\n${seqE[*]}"
+echo -e "Sequence_N\n$seqN"
+
+if [[ $seqN = "" ]]
+then
+	echo "Single parent mode."
+else
+	both_mode=1
+	echo "Both parents mode."
+fi
+
 echo -e "Sequence_E"
 for i in `seq $ecount`
 do
@@ -446,7 +498,7 @@ do
 	echo ${np2_seq[$gid]}
 done
 
-echo $seqA $seqF $seqE
+#echo $seqA $seqF $seqE
 if [[ $seqA = "" ]] || [[ $seqF = "" ]] || [[ $seqE = "" ]]
 then
 	echo -e "\033[31mERROR: Input incomplete. \033[0m"
@@ -543,13 +595,20 @@ echo "Part2..."
 pp=$1
 ###polar body####
 rm ${OUT}/${pp}_all.vcf.list
-for sample in A F01 F02
+for sample in A F
 do
 	if [ -f $OUT/${pp}_${sample}.raw_snps.indels.g.vcf ]
 	then
         	echo $OUT/${pp}_${sample}.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
 	fi
 done
+
+if [[ $both_mode -eq 1 ]]
+then
+	sample=N
+	echo $OUT/${pp}_${sample}.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
+fi
+
 for ii in `seq ${np1_num}`
 do
 	i=`printf "%02d" $ii`
@@ -566,20 +625,29 @@ $GATK -T SelectVariants -R $genome -selectType SNP -V $OUT/${pp}_AFE.raw_snps.in
 #$GATK -T VariantFiltration -R $genome -V $OUT/${pp}_AFE.raw_snps.vcf --filterExpression "DP < 10 || QD < 2.0 || FS > 60.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" --filterName "my_snp_filter" -o $OUT/${pp}_AFE.raw_snps.filtered.vcf #2>> $OUT/run_log.txt
 #awk '{if($1 ~ /^#/ || $7 == "PASS") print $0}' $OUT/${pp}_AFE.raw_snps.filtered.vcf > $OUT/${pp}_AFE.raw_snps.ftd.vcf
 #cp $OUT/${pp}_AFE.raw_snps.filtered.vcf $OUT/${pp}_AFE.raw_snps.ftd.vcf
-#Criteria1. Choose sites that are called in g.vcf in A and F
+
+#Criteria 1. Choose sites that are called in g.vcf in A and F
 #bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' <(cat <(awk '{if($1 ~ /^#/) print $0}' $OUT/${pp}_AFE.raw_snps.ftd.vcf) <(bedtools intersect -a <(bedtools intersect -a <(awk '{if($1 !~ /^3/) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_AFE.raw_snps.ftd.vcf | cut -f 1-2,4-) -b <(awk '{if($1 !~ /^3/) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_A.raw_snps.indels.g.vcf | cut -f 1-2,4-)) -b <(awk '{if($1 !~ /^3/) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_F01.raw_snps.indels.g.vcf | cut -f 1-2,4-) | cut -f 1,3-)) > $OUT/${pp}_GT.txt 
 bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' $OUT/${pp}_AFE.raw_snps.vcf > $OUT/${pp}_GT.txt 
 bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%DP\t]\n' $OUT/${pp}_AFE.raw_snps.vcf > $OUT/${pp}_DP.txt
 bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%PL]\n' $OUT/${pp}_AFE.raw_snps.vcf > $OUT/${pp}_PL.txt
-#Criteria2. Choose sites with DP greater than 2 in A and F.
-if (( ${#seqF[@]} == 1 ))
-then	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= 2 && $6 >= 2) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
-else	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= 10 && $6 >= 10) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
+#Criteria 2. Choose sites with DP greater than 2 in A and F.
+if (( $both_mode == 0 ))
+then	# single parent
+	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= 2 && $6 >= 2) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
+else	# both parents
+	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= 10 && $6 >= 10) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
 fi
 mv $OUT/${pp}_GT_new.txt $OUT/${pp}_GT.txt
 # chrX	68162230	G	T	T/T	G/T	G/G
-# 					A	F	PB11	PB12	...	PB21	PB22
 # 1	2		3	4	5	6	7	8
+
+# single parent
+# 					A	F	PB11	PB12	...	PB21	PB22
+
+# both parents
+# 					A	F	N	PB11	PB12	...	PB21	PB22
+
 }
 
 # part4 pahsing
@@ -588,24 +656,26 @@ echo "Part3..."
 pp=$1
 if [ ! -f hg19.recomb_rate.${chr}.txt ]
 then
-awk '{if($1 == "'$chr'") print $1"\t"$2-1"\t"$0}' /data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/GATK_known_sites/dbsnp_138.freq | cut -f 1-2,4- > dbsnp_138.${chr}.freq
-awk '$1 == "'${chr}'"' /data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Track/hg19.recomb_rate.txt > hg19.recomb_rate.${chr}.txt
+	awk '{if($1 == "'$chr'") print $1"\t"$2-1"\t"$0}' /data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/GATK_known_sites/dbsnp_138.freq | cut -f 1-2,4- > dbsnp_138.${chr}.freq
+	awk '$1 == "'${chr}'"' /data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Track/hg19.recomb_rate.txt > hg19.recomb_rate.${chr}.txt
 fi
 ##polar body
 
-if (( ${#seqF[@]} == 1 ))
+if (( $both_mode == 0 ))
 then	start_pos=5
 else	start_pos=6
 fi
+
 if [[ $np1_num -ne 0 ]]
 then
 
 echo -e "Session\tID\tchr\tleft\tright\trisk\tall\tratio\tP(disease/normal)\tstate" > $OUT/${pp}_report_pb.txt
 for ii in `seq $np1_num`	# each polar body12 for embryo
 do
-	cla=`echo "$start_pos + $ii*2" | bc -l`
-	clb=`echo "$start_pos + 1 +$ii*2" | bc -l`
-	ii_1=`echo "scale=0; $ii - 1" | bc`;i=${numnp1[$ii_1]}
+	cla=`echo "$start_pos + $ii*2" | bc -l`	# PB1
+	clb=`echo "$start_pos + 1 +$ii*2" | bc -l`	# PB2
+	ii_1=`echo "scale=0; $ii - 1" | bc`
+	i=${numnp1[$ii_1]}
 	cut -f 1-6,$cla,$clb $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$3"/"$3 && $6!=$4"/"$4 && ($8==$3"/"$3||$8==$4"/"$4) && $7!=$8 && $4!~/,/' | uniq > $OUT/${pp}_GT_${i}_pb.diff
 	# A and F should be diff
 	# F should be heter.
@@ -655,7 +725,7 @@ do
                         fi
                 done < $OUT/${pp}_GT_${i}_pb.stata${file}
         done
-        sort -k 2n  $OUT/${pp}_GT_${i}_pb.stat.1 > $OUT/${pp}_GT_${i}_pb.stata; rm $OUT/${pp}_GT_${i}_pb.stat.1
+        sort -k 2n $OUT/${pp}_GT_${i}_pb.stat.1 > $OUT/${pp}_GT_${i}_pb.stata; rm $OUT/${pp}_GT_${i}_pb.stat.1
 ##Redefine the non-recombinated region spanning from the disease site   
 ##Calulate probablity of disease over normal
 	bedtools intersect -a <(cut -f 1-6,$cla,$clb $OUT/${pp}_PL.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}_pb.stata | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_PL_${i}_pb.stata
@@ -717,14 +787,17 @@ do
 
 done
 fi
+
 # embryo
 echo -e "Session\tID\tchr\tleft\tright\trisk\tall\tratio\tP(disease/normal)\tstate" > $OUT/${pp}_report.txt
 for ii in `seq $ecount`	# each embryo
 do
 	clm=`echo "scale=0; $start_pos+1+$np1_num*2+$ii" | bc`
-	ii_1=`echo "$ii - 1" | bc`; i=${numE[$ii_1]}
-	if (( ${#seqF[@]} == 1 ))
-	then	cut -f 1-6,$clm $OUT/${pp}_GT.txt | awk '{split($6,f,"/");if($0!~/\.\/\./ && f[1] != f[2] && $5!=$6 && $6!=$7 && $4!~/\*/) print $0}' | uniq > $OUT/${pp}_GT_${i}.diff
+	ii_1=`echo "$ii - 1" | bc`
+	i=${numE[$ii_1]}
+	if (( $both_mode == 0 ))
+	then
+		cut -f 1-6,$clm $OUT/${pp}_GT.txt | awk '{split($6,f,"/");if($0!~/\.\/\./ && f[1] != f[2] && $5!=$6 && $6!=$7 && $4!~/\*/) print $0}' | uniq > $OUT/${pp}_GT_${i}.diff
 		rm -f $OUT/${pp}_GT_${i}.stat
 	        while read vchr vpos vref valt v1 v2 v3
 	        do
@@ -734,7 +807,8 @@ do
 	        done < $OUT/${pp}_GT_${i}.diff    
 		awk '$8!="" && $9!=""' $OUT/${pp}_GT_${i}.stat > $OUT/${pp}_GT_${i}.stata
 		CC=(7 8 9)
-	else	bedtools intersect -a <(cut -f 1-7,$clm $OUT/${pp}_GT.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(cut -f 1-7,$clm $OUT/${pp}_DP.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wao | awk '{split($7,f,"/");if(f[1]!=f[2] && $6!=$7 && (($0!~/\.\/\./ && $7==$9 && $8!=$9 && $17>10) || ($7!=$9 && $6!~/\.\/\./ && $7!~/\.\/\./ && $9!~/\.\/\./))) print $0}' | uniq | cut -f 1,3-9 > $OUT/${pp}_GT_${i}.diff
+	else	# both parents mode
+		bedtools intersect -a <(cut -f 1-7,$clm $OUT/${pp}_GT.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(cut -f 1-7,$clm $OUT/${pp}_DP.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wao | awk '{split($7,f,"/");if(f[1]!=f[2] && $6!=$7 && (($0!~/\.\/\./ && $7==$9 && $8!=$9 && $17>10) || ($7!=$9 && $6!~/\.\/\./ && $7!~/\.\/\./ && $9!~/\.\/\./))) print $0}' | uniq | cut -f 1,3-9 > $OUT/${pp}_GT_${i}.diff
 #		bedtools intersect -a <(cut -f 1-7,$clm $OUT/${pp}_GT.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(cut -f 1-7,$clm $OUT/${pp}_DP.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wao | awk '{split($7,f,"/");if(f[1]!=f[2] && $6!=$7 && $8!=$7 && $0!~/\.\/\./ && $17>10) print $0}' | uniq | cut -f 1,3-9 > $OUT/${pp}_GT_${i}.diff 
 		rm -f $OUT/${pp}_GT_${i}.stat
 		while read vchr vpos vref valt v1 v2 v21 v3
@@ -788,7 +862,7 @@ do
 		done 
 	done
 	sort -k 2n  $OUT/${pp}_GT_${i}.stat.1 > $OUT/${pp}_GT_${i}.stata; rm $OUT/${pp}_GT_${i}.stat.1
-	if (( ${#seqF[@]} == 1 ))
+	if (( $both_mode == 0 ))
 	then	bedtools intersect -a <(cut -f 1-6,$clm $OUT/${pp}_PL.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_PL_${i}.stata 
 		bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) -b dbsnp_138.${chr}.freq -wao | awk '{freq=0.001;split($16,AF,",");if($5 == $15){freq=AF[2]}; print $0"\t"freq}' | cut -f 1,3,18 | sed 's#]##g' > $OUT/${pp}_freq_${i}.stata
 	else	bedtools intersect -a <(cut -f 1-7,$clm $OUT/${pp}_PL.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_PL_${i}.stata 
@@ -810,19 +884,22 @@ do
 		pl=(`sed -n ''${ll}'p' $OUT/${pp}_PL_${i}.stata`); echo ${pl[@]}
 		fq=(`sed -n ''${ll}'p' $OUT/${pp}_freq_${i}.stata`); echo ${fq[@]}
 		dis=`awk 'BEGIN{d='${site}'-'${gt[1]}';if('${gt[1]}' > '${site}'){d='${gt[1]}'-'${site}'};printf("%.0f",d)}'`
-		fq_s[0]=`echo "scale=6; (1-${fq[2]})*(1-${fq[2]})" | bc`; fq_s[1]=`echo "scale=6; 2*${fq[2]}*(1-${fq[2]})" | bc`; fq_s[2]=`echo "scale=6; ${fq[2]}*${fq[2]}" | bc`	
-		if (( ${#seqF[@]} == 2 && ${gt[10]} == 1 ))
+		fq_s[0]=`echo "scale=6; (1-${fq[2]})*(1-${fq[2]})" | bc`; fq_s[1]=`echo "scale=6; 2*${fq[2]}*(1-${fq[2]})" | bc`; fq_s[2]=`echo "scale=6; ${fq[2]}*${fq[2]}" | bc`
+		if (( $both_mode == 1 && ${gt[10]} == 1 ))
 		then	COL=(4 5 6 7)
-		elif (( ${#seqF[@]} == 2 && ${gt[10]} == 0 ))
+		elif (( $both_mode == 1 && ${gt[10]} == 0 ))
 		then	COL=(4 5 7)
 		else	COL=(4 5 6)
 		fi
-		prob_all_gt_right=1; for col in ${COL[@]} 
+		
+		prob_all_gt_right=1
+		for col in ${COL[@]} 
 		do
 			pl_col=(`echo ${pl[$col]} | sed 's#,# #g'`)
 			pl_c[0]=${pl_col[0]}; pl_c[1]=${pl_col[1]}; pl_c[2]=${pl_col[2]}
 			denominator=0; pg0=0; for num in 0 1 2
-			do	if (( ${pl_c[$num]} == 0 && `expr $pg0 \< ${fq_s[$num]}` == 1 ))
+			do
+				if (( ${pl_c[$num]} == 0 && `expr $pg0 \< ${fq_s[$num]}` == 1 ))
 				then	pg0=${fq_s[$num]}
 				fi
 				denominator=`awk 'BEGIN{printf("%.60f", '$denominator' + '${fq_s[$num]}'/10^('${pl_col[$num]}'/10))}'`	
@@ -893,7 +970,7 @@ do_track <- function(dat,pos,id,risk=F) {
   })
   mtext(text = id,side = 2,line = 1)
   legend(x = "topright",legend = c("Bad", "normal"),fill = mycol,bty = "n")
-  G_add=0;if( ${#seqF[@]}==2 ){G_add=1}
+  G_add=0;if( $both_mode==1 ){G_add=1}
   if(risk) {
     points(x=dat[dat[,8+G_add]==dat[,9+G_add],2],y=rep(-0.9,sum(dat[,8+G_add]==dat[,9+G_add])),pch=17,col="red",cex=0.8)
   }
@@ -904,7 +981,7 @@ pdf("$OUT/${session}_${i}_snv.pdf",width = 8,height = 4)
 par(mfrow=c(3,1),mar=c(2,3,1,1),oma=c(3,0,3,0))
 do_track(dat,1,"A")
 do_track(dat,2,"F01")
-add=0; if( ${#seqF[@]}==2 ){
+add=0; if( $both_mode==1 ){
 	do_track(dat,3,"F02"); add=1
 }
 do_track(dat,3+add,"${i}",risk = T)
@@ -949,7 +1026,7 @@ do_track_pb <- function(dat,pos,id,diploid=T,risk=F) {
     }
   })
   mtext(text = id,side = 2,line = 1)
-  G_add=0;if( ${#seqF[@]}==2 ){G_add=1}
+  G_add=0;if( $both_mode==1 ){G_add=1}
   legend(x = "topright",legend = c("disease","normal"),fill = mycol,bty = "n",cex = 0.62)
   if(risk) {
     points(x=dat[dat[,9+G_Add]==dat[,10+G_add],2],y=rep(-0.9,sum(dat[,9+G_add]==dat[,10+G_add])),pch=17,col="red",cex=0.8)
@@ -961,7 +1038,7 @@ pdf("$OUT/${session}_${i}_pb_snv.pdf",width = 8,height = 4)
 par(mfrow=c(4,1),mar=c(2,3,1,1),oma=c(3,0,3,0))
 do_track_pb(dat,1,"A")
 do_track_pb(dat,2,"F01")
-add=0;if( ${#seqF[@]} == 2 ) {
+add=0;if( $both_mode==1 ) {
 	do_track_pb(dat,3,"F02"); add=1
 }
 do_track_pb(dat,3+add,"${i}_1")
