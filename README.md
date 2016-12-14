@@ -70,6 +70,8 @@ http://broadinstitute.github.io/picard/
 
 If necessary, you are recommended to change the commands in file marsala, to fit in the version of pragram with the parameters we use now. 
 
+The reference genome version we use is hg19. 
+
 ## Obtaining and intalling Marsala
 
 You can download the latest source release on github.
@@ -84,9 +86,21 @@ Configure the package, specifying the install path of required tools as needed
 
 `./configure`
 
+Go to the folder data/, Download dbsnp frequency file, download to the this folder from GTAK Resource bundle as suggested:
+https://software.broadinstitute.org/gatk/guide/article?id=1213
+Extract the columns using commands:
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%CAF\t\n' [The downloaded dbSNP file.] > dbsnp_138.freq
+Example of file dbSNP_138.freq:
+chrM    64      C       T       [0.9373,0.06268]
+chrM    72      T       C       [0.9878,0.01123]
+chrM    93      A       G       [0.9663,0.03368]
+chrM    97      G       A       [0.9972,0.002806]
+
+
 ## Using Marsala
 
 Please just type marsala for detail help.
 There is a example of how should you build a config file in -l parameter. We highly recommend you use tab separated config file instead of -da, -de parameters to input sequence file.
+
 
 
