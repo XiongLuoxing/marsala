@@ -9,23 +9,32 @@ Marsala is a program that comprehensively detects variants (SNV and CNV) in PGS 
 
 Marsala is designed to work with reads from whole genome sequencing, although users have been successful in using Marsala with reads from specific region of genome.
 
-In general, Marsala uses sequencing information from three parts:
+In general, Marsala uses sequencing information from five parts:
 
 1. Disease-Grandparent or Disease-child (A)
 
-2. Disease-parent (F)
+2. Disease-parent (F01) and Normal parent (F02)
 
 3. Embryo (E)
 
-In addition, users can use sequencing information from polar body 1 (PB1) and polar body 2 (BP2) that corresponds to specific embryo, which will make result more accurate.
+4. Sperm (S)
+
+5. polar body 1 and polar body 2
+
+We here support 3 modes: 
+  mode1. A+F01+E
+  mode2. A+F01+F02+E
+  mode3. F01+F02+E
+  mode4. F01+F02+E+S
+Polar body Could be added to any of the 4 modes. Once polar body 1 has been given, polar body 2 has to be present, too.
 
 ## How does Marsala detect variants?
 
 1. SNV <br />
-First, given specific genomic region (less than 2Mbp) Marsala detects SNVs for A, F and E (as well as PB1 and PB2) seperately. <br />
-Then, Marsala compares the genotypes between A amd F and infer which one of the chromosome homologous was passed from A to F. (i.e. risk genomic mate determination) <br />
-Next, Marsala compares the genotypes between F and E and estimate the ratio of risk passed sites to all passed sites. <br />
-Finally, Marsala determines whether this E obtains the risk genomic region which contains disease-related mutation. <br />
+In all of four modes, the basic clue is to find the allele passed from F01 to E, and compare it with the diseases allele. The allele passed from F01 to E is decided by the genotypes called at nearby sites. <br />
+If A is given(mode1 and mode2), the diseased allele is the allele passed from A to F01, which could be phased out by comparing the genotype of A and F01. <br />
+If A is absent, the 2 alleles could be phased out by grouping and intergrating all the alleles passed from F01 to E, which comprise the 2 alleles in F01. And the diseased allele has mutation at the causal site. <br />
+
 
 2. CNV <br />
 Marsala estimate the DNA copy number of E and report whether E was normal.
@@ -36,22 +45,27 @@ Liying Yan,  Lei Huang,  Liya Xu,  Jin Huang,  Fei Ma,  Xiaohui Zhu,  Yaqiong Ta
 
 ## Prerequisites
 
-To use marsala, you will need the following programs in your PATH:
+To use marsala, you will need the following programs in your PATH(The version we use is appended at the end):
 
-bwa <br />
+bwa [0.7.15-r1140]<br />
 http://bio-bwa.sourceforge.net/
 
-samtools [equal or older than v1.2] <br />
+samtools [1.3.1 (using htslib 1.3.1)] <br />
 http://samtools.sourceforge.net/
 
-bcftools <br />
+bcftools [1.3.1 (using htslib 1.3.1)]<br />
 https://samtools.github.io/bcftools/
 
-GATK <br />
+GATK [3.3-0-g37228af]<br />
 https://www.broadinstitute.org/gatk/
 
-control-freec <br />
+control-freec [v7.2]<br />
 http://bioinfo-out.curie.fr/projects/freec/
+
+bedtools [v2.25.0] <br />
+http://bedtools.readthedocs.io/en/latest/
+
+If necessary, you are recommended to change the commands in file marsala, to fit in the version of pragram with the parameters we use now. 
 
 ## Obtaining and intalling Marsala
 
@@ -70,5 +84,6 @@ Configure the package, specifying the install path of required tools as needed
 ## Using Marsala
 
 Please just type marsala for detail help.
+There is a example of how should you build a config file in -l parameter. We highly recommend you use tab separated config file instead of -da, -de parameters to input sequence file.
 
 
