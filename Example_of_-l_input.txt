@@ -1,0 +1,28 @@
+##Lines started with # are explanation, thus should not be included.
+##The 1st column is the fastq file name.
+##The 2nd column is the sample id, usually A, F01, F02, E[0-9][0-9], S[0-9][0-9], we recommend the id of embryo is ordered.
+##The 3rd column is the batch of amplification, if all samples are from the same batch, col3 could be empty. 
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_3_HU_FATHER.fq.gz	A	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_1.fq.gz	E1	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_1_HUBO.fq.gz	F01	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_2.fq.gz	E2	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_2_tang.fq.gz	F02	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_3.fq.gz	E3	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_4.fq.gz	E4	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Case1_E05.1.fq.gz	E5	2
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Case1_E05.2.fq.gz	E5	2
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_6.fq.gz	E6	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_7.fq.gz	E7	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1_LeiBatch/S0008A.1.fq.gz	E8	2
+/WPS2/xionglx/marsala/paper_case/rawdata/case1_LeiBatch/S0008A.2.fq.gz	E8	2
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_9.fq.gz	E9	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_10.fq.gz	E10	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_11.fq.gz	E11	2
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_12.fq.gz	E12	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Case1_E13.1.fq.gz	E13	2
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Case1_E13.2.fq.gz	E13	2
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_14.fq.gz	E14	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_15.fq.gz	E15	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_16.fq.gz	E16	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_17.fq.gz	E17	1
+/WPS2/xionglx/marsala/paper_case/rawdata/case1/Sample_18.fq.gz	E18	1
