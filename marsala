@@ -1,34 +1,36 @@
 #!/bin/bash
-# A - grandfather
-# F - disease parent
-# N - normal parent
-# E - embyro
+# A 	- proband 
+# F01 	- diseased parent
+# F02	- normal parent
+# E / Z	- embyro
+# S	- sperm
+# PB[0-9]1	- polar body 1
+# PB[0-9]2	- polar body 2
 
 # support multiple embrybo samples
 # support polar body
-# suport plot SNV and CNV
-# support both parents mode
+# support linkage analysis without proband(Embryo number >= 4 && Disease site sequenced in most embryos)
+# support linkage analysis with sperm, without proband(Disease site sequenced in most embryos)
+# support plot SNV and CNV
+# support embryos amplified in different batches, specified in input sample file
 
-set -x
-VERSION="v1.0.0 beta, 03.16.2016"
-AUTHOR_LIST="Feng Tian, Luoxing Xiong"
+VERSION="v1.0.0 beta, 10.25.2016"
+AUTHOR_LIST="Luoxing Xiong, Feng Tian"
 
-genome=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa
-chromdir=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/Chromosomes
-chromLen=/home/xionglx/lustre/projects/ivf/t_marsala/marsala-1.0.0/data/hg19_len.txt
-chromLen_noN=/home/xionglx/lustre/projects/ivf/t_marsala/marsala-1.0.0/data/hg19_len_noN.txt
-index=/data1/SX/tianf/database/Homo_sapiens/UCSC/hg19/Sequence/BWAIndex/version0.6.0/genome.fa
-PICARD=/data1/SX/xionglx/tools/picard-tools-1.119
-GATK=/data1/SX/xionglx/tools/GenomeAnalysisTK.jar
-gdata=/data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/GATK_known_sites
+genome=/Share/BP/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/BWAIndex/genome.fa
+chromdir=/Share/BP/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/Chromosomes
+chromLen=/WPS2/xionglx/marsala/data/hg19_len.txt
+chromLen_noN=/WPS2/xionglx/marsala/data/hg19_len_noN.txt
+index=/Share/BP/xionglx/database/human/Homo_sapiens/UCSC/hg19/Sequence/BWAIndex/version0.6.0/genome.fa
+PICARD=/Share/BP/xionglx/tools/picard-tools-1.119
+GATK=/Share/BP/xionglx/tools/GenomeAnalysisTK.jar
+gdata=/Share/BP/xionglx/database/human/Homo_sapiens/UCSC/hg19/GATK_known_sites
 
-chr_length=/home/xionglx/lustre/projects/ivf/t_marsala/marsala-1.0.0/data/new_chrlength.txt
+chr_length=/WPS2/xionglx/marsala/data/new_chrlength.txt
 bin=3Mb
-nor_factor=/home/xionglx/lustre/projects/ivf/t_marsala/marsala-1.0.0/data/3Mb_nor1_nor_factor_malbac.txt
-cnv_bin=/home/xionglx/lustre/projects/ivf/t_marsala/marsala-1.0.0/data/3Mb.bin
-Npos=/home/xionglx/lustre/projects/ivf/t_marsala/marsala-1.0.0/data/Npos.bed
-#MALBAC_primer=/home/xionglx/lustre/projects/ivf/t_marsala/marsala-1.0.0/data/MALBAC_primer.fa
-#illumina_adapter=/home/xionglx/lustre/projects/ivf/t_marsala/marsala-1.0.0/data/illumina_adapter.fa
+nor_factor=/WPS2/xionglx/marsala/data/3Mb_nor1_nor_factor_malbac.txt
+cnv_bin=/WPS2/xionglx/marsala/data/3Mb.bin
+Npos=/WPS2/xionglx/marsala/data/Npos.bed
 
 
 usage()
@@ -36,28 +38,36 @@ usage()
 cat << BROWSERS
 Program: Marsala
 Version: $VERSION
-Usage:   `basename $0` [options] -dg dg.fq -dp dp.fq -de E1_R1.fq,E2_R1.fq,E3_R1.fq+E1_R2.fq,E2_R2.fq,E3_R2.fq
-         A: Disease-Grandparent or Disease-child  F: Disease-parent  N: Normal-parent  E: Embryo
+Usage:   `basename $0` [options] -da da_R1.fq+da_R2.fq -df1 df1_R1.fq+df1_R2.fq -df2 df2_R1.fq+df2_R2.fq -de E1_R1.fq,E2_R1.fq,E3_R1.fq+E1_R2.fq,E2_R2.fq,E3_R2.fq -ds S1_R1.fq,S2_R1.fq,S3_R1.fq+S1_R2.fq,S2_R2.fq,S3_R2.fq -p1 PB11_R1.fq,PB21_R1.fq,PB31_R1.fq+PB11_R2.fq,PB21_R2.fq,PB31_R2.fq -p2 PB12_R1.fq,PB22_R1.fq,PB32_R2.fq+PB12_R2.fq,PB22_R2.fq,PB32_R2.fq
+         A: Proband  F01: Diseased-parent  F02: Normal-parent E: Embryo
 Options:
 	[Sequencing Data]
-	 -l sample list for sequencing files [NULL] (prior than -dg -dp -p1 -p2 e.g. foo.fq.gz A)
-	 -dg fq(if PE, seperate with +) file of Grandparent or Disease-child
-	 -dp fq(if PE, seperate with +) file of Disease-parent
-	 -dn fq(if PE, seperate with +) file of Normal-parent
-	 -de fq(if PE, seperate with +) file of Embryo
-         -p1 fq(if PE, seperate with +) file of polar body 1
-         -p2 fq(if PE, seperate with +) file of polar body 2
+	 -l	sample list for sequencing files [NULL] (prior than -da -df -p1 -p2 e.g. foo.fq.gz A)
+	 -da 	fq(if PE, seperate with +) file of proband 
+	 -df1 	fq(if PE, seperate with +) file of Diseased-parent
+	 -df2 	fq(if PE, seperate with +) file of Normal-parent
+	 -de 	fq(if PE, seperate with +) file of Embryo
+	 -ds 	fq(if PE, seperate with +) file of Sperm 
+         -p1 	fq(if PE, seperate with +) file of polar body 1
+         -p2 	fq(if PE, seperate with +) file of polar body 2
 
-	[Target site and Interval for Analysis]
-	 -s specify the location of the putative disease mutation
-	 -r specify a region for SNP anlaysis (e.g. chr1:20000-90000) [NULL] (prior than -b)
-	 -b specify a region in bed format [NULL]
+	[Interval for Analysis]
+	 -sm 	SNV mode, doing SNV analysis or not (0 or 1, 1 for doing)[1]. 
+	 -cm 	CNV mode, doing CNV analysis or not (0 or 1, 1 for doing)[1]. 
+	 -r 	specify a region for SNP anlaysis (e.g. chr1:20000-90000) [NULL] (prior than -b)
+	 -b 	specify a region in bed format [NULL]
 
 	[Work and Performance]
-	 -n session name [study]
-	 -O output prfix [.]
-         -p number of threads [1]
-         -m size of memery [4g]
+	 -n 	session name [study]
+	 -O 	output prfix [.]
+         -p 	number of threads [1]
+         -m 	size of memery [4g]
+	 -ado	allele drop out rate of the single cell amplification method[0.21]
+	 -fp	false positive rate of the single cell amplification method[0.00038]
+	 -dl	depth limit of linkage sites for proband and parents(only works when sm is 1)[10]
+	 -dl_em	depth limit of linkage sites for embryos(only works when sm is 1)[3]
+	 -sl	left border of the disease causal mutation[middle of the SNP analysis region]
+	 -sr	right border of the disease causal mutation(specify causal mutation is indel)[middle of the SNP analysis region]
 
 	[About]
 	 -h show this help information
@@ -75,16 +85,20 @@ cpu=1
 mem=4g
 session=study
 OUT=.
+ADO=0.21
+FP=0.00038
 
 ### initial values
 list_mode=0
-both_mode=0
+snv_mode=1
+cnv_mode=1
+scount=0
 np1_num=0
 np2_num=0
 ###
 
 ###getopt###
-ARGS=`getopt -o l:s:r:b:n:p:m:O:hv -a -l dg:,dp:,dn:,de:,p1:,p2:,help -- "$@"`
+ARGS=`getopt -o l:sm:cm:ado:fp:r:b:dl:sl:sr:n:p:m:O:hv -a -l da:,df1:,df2:,de:,p1:,p2:,help -- "$@"`
 #eval set -- $ARGS
 
 while true
@@ -101,10 +115,8 @@ do
       ecount=`awk '$2~/E[0-9]+/ {print $2}' $splst | sort -u | wc -l`
 
       seqA=`awk '$2=="A" {print $1}' $splst | paste -s -d ' '`
-      seqF=`awk '$2=="F" {print $1}' $splst | paste -s -d ' '`
-      seqN=`awk '$2=="N" {print $1}' $splst | paste -s -d ' '`
-      #seqF[0]=`awk '{if($2=="F1" || $2 == "F01"){print $1}}' $splst | paste -s -d ' '`
-      #seqF[1]=`awk '{if($2=="F2" || $2 == "F02"){print $1}}' $splst | paste -s -d ' '`
+      seqF[0]=`awk '{if($2=="F1" || $2 == "F01"){print $1}}' $splst | paste -s -d ' '`
+      seqF[1]=`awk '{if($2=="F2" || $2 == "F02"){print $1}}' $splst | paste -s -d ' '`
       #seqE=`awk '$2~/E[0-9]+/ {print $1}' $splst | paste -s -d ' '`
       i=0	# input embryo
       while read emin
@@ -115,6 +127,33 @@ do
 	i=$(($i + 1))
       done < <(awk '$2~/E[0-9]+/ && !seen[$2]++ {print $2}' $splst)
       ecount=$i
+      i=0	# input sperms
+      while read emin
+      do
+ 	#echo $emin
+	seqS[$i]=`awk -v ks=$emin '$2==ks {print $1}' $splst | paste -s -d ' '`
+        numS[$i]=`awk -v ks=$emin '$2==ks {print $2}' $splst | sed -n '1p'`
+	i=$(($i + 1))
+      done < <(awk '$2~/S[0-9]+/ && !seen[$2]++ {print $2}' $splst) 
+      scount=$i
+      cnv_group_all=`awk '$2 ~/[ES][0-9]+/' $splst | cut -f 3`
+      cnv_group=()
+      if [[ $cnv_group_all != "" ]] 
+      then	cnv_group=()
+		group_i=1;for group in `awk '$2 ~/[ES][0-9]+/' $splst | cut -f 3 | sort | uniq`	
+		do
+			cnv_group[$group_i]=`awk '{if($3=='${group}' && $2 ~/[ES][0-9]+/){print $2}}' $splst | sort | uniq | paste -s -d ' '`
+			cnv_group_name[$group_i]=$group
+			group_i=`echo "scale=0; $group_i + 1" | bc`
+		done
+      fi
+      if [[ ${cnv_group[1]} = "" ]] 
+      then	cnv_group[1]=`awk '{if($2 ~/[E][0-9]+/){print $2}}' $splst | sort | uniq | paste -s -d ' '`
+		cnv_group_name[1]="E"
+      fi
+      if (( $scount > 0 )) && (( $ecount <= 3 )) 
+      then	cnv_group[1]=`awk '{if($2 ~/[ES][0-9]+/){print $2}}' $splst | sort | uniq | paste -s -d ' '`
+      fi
 
       i=0       # input polar body 1
       while read pbin
@@ -136,10 +175,15 @@ do
       done < <(awk '$2~/PB[0-9]+2/ && !seen[$2]++ {print $2}' $splst)
         #echo ${np2_seq[0]}
       np2_num=$i
+      if (( $np1_num > 0 ))
+      then	
+	cnv_group[0]=`awk '{if($2 ~/PB[0-9]+/){print $2}}' $splst | sort | uniq | paste -s -d ' '`
+	cnv_group_name[0]="PB"
+      fi
 
       shift 2
       ;;
-    -dg)
+    -da)
       if [[ $2 = "" ]]
       then
         exit
@@ -162,8 +206,7 @@ do
       fi
       shift 2
       ;;
-
-    -dp)
+    -df1)
       if [[ $2 = "" ]]
       then
         exit
@@ -176,17 +219,16 @@ do
       then
 	echo "Input of Disease-parent: $2"
 	echo "Single End"
-	seqF=(`echo $2 | tr ',' ' '`)
+	seqF[0]=`echo $2`
       else			# pair end
 	echo "Input of Disease-parent: $2" | tr '+' ' '
-	seqF=`echo $2 | tr '+' ' '`
+	seqF[0]=`echo $2 | tr '+' ' '`
       fi
 
       fi
       shift 2
       ;;
-
-    -dn)
+     -df2)
       if [[ $2 = "" ]]
       then
         exit
@@ -197,19 +239,17 @@ do
 
       if [[ ! $2 =~ "+" ]]      # single end
       then
-        echo "Input of Normal-parent: $2"
+        echo "Input of Disease-parent: $2"
         echo "Single End"
-	seqF=$2
+        seqF[1]=(`echo $2`)
       else                      # pair end
-        echo "Input of Normal-parent: $2" | tr '+' ' '
-	echo "Pair end"
-	seqF=`echo $2 | tr '+' ' '`
+        echo "Input of Disease-parent: $2" | tr '+' ' '
+        seqF[1]=(`echo $2 | tr '+' ' '`)
       fi
 
       fi
       shift 2
       ;;
-
     -de)
       if [[ $2 = "" ]]
       then
@@ -226,6 +266,7 @@ do
 	#`echo $2 | tr ',' '\n'`
 	seqE=(`echo $2 | tr ',' ' '`)
 	ecount=`echo $2 | tr ',' '\n' | wc -l`
+	numE=("E"`seq -s " E" 1 1 $ecount`)
 	echo "Number of embryo: $ecount"
       else			# pair end
 	echo "Input of embryo: $2" | tr '+' ' '
@@ -242,6 +283,7 @@ do
 		exit
 	fi
 	ecount=$emb1_num
+	numE=("E"`seq -s " E" 1 1 $ecount`)
 	eindex=$(($ecount - 1))
 	i=0
         while [[ $i -le $eindex ]]
@@ -254,6 +296,56 @@ do
 	#echo ${np12_seq[*]}
       fi
       #echo ${seqE[*]}
+
+      fi
+      shift 2
+      ;;
+    -ds)
+      if [[ $2 = "" ]]
+      then
+	exit
+      fi
+
+      if [[ $list_mode -eq 0 ]] # input from cmd
+      then
+
+      if [[ ! $2 =~ "+" ]]	# single end
+      then
+	echo "Input of sperm: $2"
+	echo "Single End"
+	#`echo $2 | tr ',' '\n'`
+	seqS=(`echo $2 | tr ',' ' '`)
+	ecount=`echo $2 | tr ',' '\n' | wc -l`
+	numS=("S"`seq -s " S" 1 1 $ecount`)
+	echo "Number of sperm: $ecount"
+      else			# pair end
+	echo "Input of sperm: $2" | tr '+' ' '
+	echo "Pair End"
+	#`echo $2 | tr ',' '\n'`
+	#`echo $3 | tr ',' '\n'`
+	sperm1_seq=(`echo $2 | cut -d '+' -f 1 | tr ',' ' '`)	# mate1
+	sperm2_seq=(`echo $2 | cut -d '+' -f 2 | tr ',' ' '`)	# mate2
+	sperm1_num=`echo $2 | cut -d '+' -f 1 | tr ',' '\n' | wc -l`
+	sperm2_num=`echo $2 | cut -d '+' -f 2 | tr ',' '\n' | wc -l`
+	if [[ $sperm1_num -ne $sperm2_num ]]
+	then
+		echo -e "\033[31mERROR: Numbers of mate files do not match. ($sperm1_num != $sperm2_num) [Embryo] \033[0m"
+		exit
+	fi
+	ecount=$sperm1_num
+	numS=("S"`seq -s " S" 1 1 $ecount`)
+	eindex=$(($ecount - 1))
+	i=0
+        while [[ $i -le $eindex ]]
+	do
+		seqS[$i]="${sperm1_seq[$i]} ${sperm2_seq[$i]}"
+		i=$(($i + 1))
+	done
+	echo "Number of sperm: $ecount"
+	#echo ${np11_seq[*]}
+	#echo ${np12_seq[*]}
+      fi
+      #echo ${seqS[*]}
 
       fi
       shift 2
@@ -356,31 +448,70 @@ do
 
     -v)
       echo $VERSION
-      echo "Written by $AUTHOR_LIST"
+      echo "Written by Feng Tian, Luoxing Xiong"
       echo "Please cite: >>>>>>>>>"
       exit
       ;;
-
-    -s)
+    -sm)
       if [[ $2 = "" ]]
-      then
-        exit
+      then	
+	exit
       fi
-      echo "Target site: $2"
-      target_chr=`echo $2 | cut -d ':' -f 1`
-      target_pos=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 1`
-      #target_posr=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 2`
+      snv_mode=$2
       shift 2
       ;;
-    -b)
+    -cm)
       if [[ $2 = "" ]]
       then
         exit
       fi
-      echo "Region file: $2"
-      chr=`head -n 1 $2 | cut -f 1`
-      posl=$((`head -n 1 $2 | cut -f 2` + 1 ))
-      posr=`head -n 1 $2 | cut -f 3`
+      cnv_mode=$2
+      shift 2
+      ;;
+    -ado)
+      if [[ $2 = "" ]]
+      then	exit
+      fi
+      ADO=$2
+      shift 2
+      ;;
+    -fp)
+      if [[ $2 = "" ]]
+      then      exit
+      fi
+      FP=$2
+      shift 2
+      ;;
+    -dl)
+      if [[ $2 = "" ]]
+      then
+	exit
+      fi
+      depth_limit=$2
+      shift 2
+      ;;
+    -dl_em)
+      if [[ $2 = "" ]]
+      then
+        exit
+      fi
+      depth_limit_em=$2
+      shift 2
+      ;;
+    -sl)
+      if [[ $2 = "" ]]
+      then
+	exit
+      fi
+      sitel=$2
+      shift 2
+      ;;
+    -sr)
+      if [[ $2 = "" ]]
+      then
+	exit
+      fi
+      siter=$2
       shift 2
       ;;
     -r)
@@ -388,7 +519,7 @@ do
       then
         exit
       fi
-      echo "Region information: $2"
+      echo "Target region: $2"
       chr=`echo $2 | cut -d ':' -f 1`
       posl=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 1`
       posr=`echo $2 | cut -d ':' -f 2 | cut -d '-' -f 2`
@@ -463,20 +594,16 @@ then
 #	ecount=$(($#/2-2))
 
 fi
+if [[ $snv_mode = 1 ]]
+then	echo "Linkage analysis ready."
+fi
+if [[ $cnv_mode = 1 ]]
+then	echo "CNV plot ready."
+fi
 
 echo -e "Sequence_A\n$seqA"
 echo -e "Sequence_F\n$seqF"
 #echo -e "Sequence_E\n${seqE[*]}"
-echo -e "Sequence_N\n$seqN"
-
-if [[ $seqN = "" ]]
-then
-	echo "Single parent mode."
-else
-	both_mode=1
-	echo "Both parents mode."
-fi
-
 echo -e "Sequence_E"
 for i in `seq $ecount`
 do
@@ -497,14 +624,22 @@ do
 	gid=$(($i - 1))
 	echo ${np2_seq[$gid]}
 done
-
-#echo $seqA $seqF $seqE
-if [[ $seqA = "" ]] || [[ $seqF = "" ]] || [[ $seqE = "" ]]
+if [[ ${seqF[1]} = "" ]]
+then	unset seqF[1]
+fi
+echo $seqA 
+echo $seqF 
+echo $seqE
+if [[ $seqE = "" ]] 
 then
-	echo -e "\033[31mERROR: Input incomplete. \033[0m"
+	echo -e "\033[31mERROR: Input incomplete. No embryos. \033[0m"
 	exit
 fi
-
+if (( ${#seqF[@]} < 2 )) && [[ $seqA = "" ]] && [[ $snv_mode = 1 ]]
+then
+	echo -e "\033[31mERROR: Input incomplete for linkage analysis. \033[0m"
+	exit
+fi
 echo "Polar body count: $np1_num"
 echo "Embryo count: $ecount"
 
@@ -527,7 +662,18 @@ echo "---------"
 mkdir -p $OUT
 PICARD="java -Xmx${mem} -jar $PICARD/MarkDuplicates.jar"
 GATK="java -Xmx${mem} -jar $GATK"
-
+if [[ $sitel = "" ]]
+then	sitel=`echo "scale=0; ($posl + $posr) / 2" | bc`
+fi
+if [[ $siter = "" ]]
+then	siter=$sitel
+fi
+if [[ $depth_limit = "" ]]
+then	depth_limit=10
+fi
+if [[ $depth_limit_em = "" ]]
+then	depth_limit_em=3
+fi
 echo "[Marsala] `date`" > $OUT/run_log.txt
 ###
 
@@ -536,10 +682,7 @@ function do_bwa {
 bpp=$1
 ##To ensure that samples can be rightly sorted in vcf file, use 0[1-9] instead of 2.
 id=$2
-fq=($3)
-
-if [ ! -f $OUT/${bpp}_${id}_rmdup.bam ]
-then
+fq=$3
 echo `date`
 echo ${bpp}_$id
 echo "Mapping..."
@@ -548,14 +691,8 @@ PL=ILLUMINA
 LB=LB_${bpp}_$id
 SM=SM_${bpp}_$id
 rg="@RG\tID:$ID\tPL:$PL\tLB:$LB\tSM:$SM"
-ss=0; for fastq in ${fq[@]}
-do
-        sai[$ss]=$fastq.sai; ss=`echo "scale=0; $ss + 1" | bc`
-        bwa aln -t $cpu $genome $fq > ${sai[$ss]} 2>> $OUT/run_log.txt
-done
-bwa sampe -r $rg $genome ${sai[@]} ${fq[@]} > sampeout/aln-pe_"$id".sam 2>> $OUT/run_log.txt
-#bwa mem -v 1 -R $rg -M -t $cpu $index $fq > $OUT/${bpp}_${id}.sam 2>> $OUT/run_log.txt
-samtools view -q 1 -bS -@ $cpu $OUT/${bpp}_${id}.sam | samtools sort -@ $cpu -m $mem - $OUT/${bpp}_${id}_sorted 2>> $OUT/run_log.txt	# XXX samtools 1.2
+bwa mem -v 1 -R $rg -M -t `echo $cpu | sed 's#g#G#'` $index $fq > $OUT/${bpp}_${id}.sam 2>> $OUT/run_log.txt
+samtools view -q 1 -bS -@ $cpu $OUT/${bpp}_${id}.sam | samtools sort -@ $cpu -m $mem -o $OUT/${bpp}_${id}_sorted.bam 2>> $OUT/run_log.txt	# XXX samtools 1.2
 
 echo "Mark duplicates..."
 MEM_value=`echo $mem | tr -d 'gG'`
@@ -565,7 +702,6 @@ ulimit -c unlimited
 $PICARD I=$OUT/${bpp}_${id}_sorted.bam O=$OUT/${bpp}_${id}_rmdup.bam M=$OUT/${bpp}_${id}_rmdup.txt REMOVE_DUPLICATES=true MAX_RECORDS_IN_RAM=$picard_MR MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=$picard_MF TMP_DIR=$OUT/${bpp}_${id} CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT 2>> $OUT/run_log.txt
 
 rm -f $OUT/${bpp}_${id}.sam
-fi
 }
 
 ### Part2: re-ca indels
@@ -594,26 +730,24 @@ echo "Part2..."
 
 pp=$1
 ###polar body####
-rm ${OUT}/${pp}_all.vcf.list
-for sample in A F
+rm -f ${OUT}/${pp}_all.vcf.list
+for sample in A F01 F02
 do
 	if [ -f $OUT/${pp}_${sample}.raw_snps.indels.g.vcf ]
 	then
         	echo $OUT/${pp}_${sample}.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
 	fi
 done
-
-if [[ $both_mode -eq 1 ]]
-then
-	sample=N
-	echo $OUT/${pp}_${sample}.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
-fi
-
 for ii in `seq ${np1_num}`
 do
 	i=`printf "%02d" $ii`
         echo $OUT/${pp}_PB${i}1.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
         echo $OUT/${pp}_PB${i}2.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
+done
+for ss in `seq ${scount}`
+do
+	s=`printf "%02d" $ss`
+	echo $OUT/${pp}_S${s}.raw_snps.indels.g.vcf >> ${OUT}/${pp}_all.vcf.list
 done
 for ee in `seq $ecount`
 do
@@ -622,32 +756,27 @@ do
 done
 $GATK -T GenotypeGVCFs -R $genome --variant ${OUT}/${pp}_all.vcf.list -o $OUT/${pp}_AFE.raw_snps.indels.vcf #2>> $OUT/run_log.txt
 $GATK -T SelectVariants -R $genome -selectType SNP -V $OUT/${pp}_AFE.raw_snps.indels.vcf -o $OUT/${pp}_AFE.raw_snps.vcf #2>> $OUT/run_log.txt
-#$GATK -T VariantFiltration -R $genome -V $OUT/${pp}_AFE.raw_snps.vcf --filterExpression "DP < 10 || QD < 2.0 || FS > 60.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" --filterName "my_snp_filter" -o $OUT/${pp}_AFE.raw_snps.filtered.vcf #2>> $OUT/run_log.txt
-#awk '{if($1 ~ /^#/ || $7 == "PASS") print $0}' $OUT/${pp}_AFE.raw_snps.filtered.vcf > $OUT/${pp}_AFE.raw_snps.ftd.vcf
-#cp $OUT/${pp}_AFE.raw_snps.filtered.vcf $OUT/${pp}_AFE.raw_snps.ftd.vcf
-
-#Criteria 1. Choose sites that are called in g.vcf in A and F
-#bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' <(cat <(awk '{if($1 ~ /^#/) print $0}' $OUT/${pp}_AFE.raw_snps.ftd.vcf) <(bedtools intersect -a <(bedtools intersect -a <(awk '{if($1 !~ /^3/) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_AFE.raw_snps.ftd.vcf | cut -f 1-2,4-) -b <(awk '{if($1 !~ /^3/) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_A.raw_snps.indels.g.vcf | cut -f 1-2,4-)) -b <(awk '{if($1 !~ /^3/) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_F01.raw_snps.indels.g.vcf | cut -f 1-2,4-) | cut -f 1,3-)) > $OUT/${pp}_GT.txt 
-bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' $OUT/${pp}_AFE.raw_snps.vcf > $OUT/${pp}_GT.txt 
-bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%DP\t]\n' $OUT/${pp}_AFE.raw_snps.vcf > $OUT/${pp}_DP.txt
-bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%PL]\n' $OUT/${pp}_AFE.raw_snps.vcf > $OUT/${pp}_PL.txt
-#Criteria 2. Choose sites with DP greater than 2 in A and F.
-if (( $both_mode == 0 ))
-then	# single parent
-	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= 2 && $6 >= 2) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
-else	# both parents
-	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= 10 && $6 >= 10) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%TGT\t]\n' $OUT/${pp}_AFE.raw_snps.indels.vcf > $OUT/${pp}_GT.txt 
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%DP\t]\n' $OUT/${pp}_AFE.raw_snps.indels.vcf > $OUT/${pp}_DP.txt
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%PL]\n' $OUT/${pp}_AFE.raw_snps.indels.vcf > $OUT/${pp}_PL.txt
+#Criteria2. Choose sites with DP greater than depth limit in A and F.
+if (( ${#seqF[@]} == 1 )) && [[ $seqA != "" ]]
+then	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= 2 && $6 >= 2) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
+elif (( ${#seqF[@]} == 1 )) && [[ $seqA = "" ]]	
+then	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= 2) print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
+elif (( ${#seqF[@]} == 2 )) && [[ $seqA != "" ]]
+then	
+	if [[ $chr = "chrX" ]]
+	then	depth_limit_A=`echo "scale=0; ${depth_limit}/2" | bc`
+	else	depth_limit_A=$depth_limit
+	fi
+	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= '${depth_limit_A}' && $6 >= '${depth_limit}') print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
+else	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT.txt | cut -f 1-2,4-) -b <(awk '{if($5 >= '${depth_limit}') print $1"\t"$2-1"\t"$0}' $OUT/${pp}_DP.txt | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_GT_new.txt
 fi
 mv $OUT/${pp}_GT_new.txt $OUT/${pp}_GT.txt
 # chrX	68162230	G	T	T/T	G/T	G/G
-# 1	2		3	4	5	6	7	8
-
-# single parent
 # 					A	F	PB11	PB12	...	PB21	PB22
-
-# both parents
-# 					A	F	N	PB11	PB12	...	PB21	PB22
-
+# 1	2		3	4	5	6	7	8
 }
 
 # part4 pahsing
@@ -655,189 +784,444 @@ function do_phasing {
 echo "Part3..."
 pp=$1
 if [ ! -f hg19.recomb_rate.${chr}.txt ]
-then
-	awk '{if($1 == "'$chr'") print $1"\t"$2-1"\t"$0}' /data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/GATK_known_sites/dbsnp_138.freq | cut -f 1-2,4- > dbsnp_138.${chr}.freq
-	awk '$1 == "'${chr}'"' /data1/SX/xionglx/database/human/Homo_sapiens/UCSC/hg19/Track/hg19.recomb_rate.txt > hg19.recomb_rate.${chr}.txt
+then	awk '$1 == "'${chr}'"' /WPS2/xionglx/marsala/data/hg19.recomb_rate.txt > hg19.recomb_rate.${chr}.txt
+fi
+if [ ! -f dbsnp_138.${chr}.freq ]
+then	awk '{if($1 == "'$chr'") print $1"\t"$2-1"\t"$0}' /WPS2/xionglx/marsala/data/dbsnp_138.freq | cut -f 1-2,4- > dbsnp_138.${chr}.freq
 fi
 ##polar body
 
-if (( $both_mode == 0 ))
+if (( ${#seqF[@]} == 1 ))
 then	start_pos=5
 else	start_pos=6
 fi
-
+if [[ $seqA = "" ]] 
+then	add=-1
+else	add=0
+fi
 if [[ $np1_num -ne 0 ]]
 then
-
-echo -e "Session\tID\tchr\tleft\tright\trisk\tall\tratio\tP(disease/normal)\tstate" > $OUT/${pp}_report_pb.txt
-for ii in `seq $np1_num`	# each polar body12 for embryo
-do
-	cla=`echo "$start_pos + $ii*2" | bc -l`	# PB1
-	clb=`echo "$start_pos + 1 +$ii*2" | bc -l`	# PB2
-	ii_1=`echo "scale=0; $ii - 1" | bc`
-	i=${numnp1[$ii_1]}
-	cut -f 1-6,$cla,$clb $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$3"/"$3 && $6!=$4"/"$4 && ($8==$3"/"$3||$8==$4"/"$4) && $7!=$8 && $4!~/,/' | uniq > $OUT/${pp}_GT_${i}_pb.diff
-	# A and F should be diff
-	# F should be heter.
-	# $7!=$8 for F 0/1: PB1 and st1 must be diff
-	## chrX    68162230        G       T       T/T     G/T     G/G	X/X
-	## chrX    68162230        G       T       T/T     G/T     T/T	X/X
-	rm -f $OUT/${pp}_GT_${i}_pb.stat
-	while read vchr vpos vref valt v1 v2 v3 v4
+	if [[ $seqA = "" ]]
+	then	echo "Proband is absent, discard linkage analysis by polar body."
+else
+	echo -e "Session\tID\tchr\tleft\tright\trisk\tall\tratio\tP(disease)\tstate" > $OUT/${pp}_report_pb.txt
+	for ii in `seq $np1_num`	# each polar body12 for embryo
 	do
-		cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
-		pb1_ale1=`echo $v3 | tr '/' '\n' | head -n 1`
-		pb1_ale2=`echo $v3 | tr '/' '\n' | tail -n 1`
-		st1_ov=`sed -e 's/'$pb1_ale1'//' -e 's/'$pb1_ale2'//' <(yes $v2 | head -n 2 | tr '/' '\n' | paste -s -d '')`
-		
-		pb2_alex=`echo $v4 | tr '/' '\n' | sort -u`
-		st2_ov=`echo $st1_ov | sed -e 's/'$pb2_alex'//'`
-
-		echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v3\t$v4\t$cm12\t$st2_ov" >> $OUT/${pp}_GT_${i}_pb.stat
-	# chrX    68162230        G       T       T/T     G/T     T/T	X/X	T       T
-	done < $OUT/${pp}_GT_${i}_pb.diff
-
-	awk '$5!=$3"/"$3 && $9!="" && $10!="" ' $OUT/${pp}_GT_${i}_pb.stat > $OUT/${pp}_GT_${i}_pb.stata	# all
-	N=`cat $OUT/${pp}_GT_${i}_pb.stata | wc -l`
-        n=`awk 'BEGIN{sum=0}{if($8 == $9) sum=sum+1}END{print sum}' $OUT/${pp}_GT_${i}_pb.stata`
+		cla=`echo "$start_pos+$add + $ii*2" | bc -l`
+		clb=`echo "$start_pos+$add + 1 +$ii*2" | bc -l`
+		ii_1=`echo "scale=0; $ii - 1" | bc`;i=${numnp1[$ii_1]}
+		cut -f 1-6,$cla,$clb $OUT/${pp}_GT.txt | awk '$0!~/\.\/\./ && $5!=$6 && $6!=$3"/"$3 && $6!=$4"/"$4 && ($8==$3"/"$3||$8==$4"/"$4) && $7!=$8 && $4!~/,/' | uniq > $OUT/${pp}_GT_${i}_pb.diff
+		# A and F should be diff
+		# F should be heter.
+		# $7!=$8 for F 0/1: PB1 and st1 must be diff
+		## chrX    68162230        G       T       T/T     G/T     G/G	X/X
+		## chrX    68162230        G       T       T/T     G/T     T/T	X/X
+		rm -f $OUT/${pp}_GT_${i}_pb.stat
+		while read vchr vpos vref valt v1 v2 v3 v4
+		do
+##v1,v2,v3,v4: gt of A,F01,PB1,PB2
+##PB2 is haploid, thus genotype should not be heterozygous
+			if [[ $v4 = $vref"/"$valt ]]
+			then	continue
+			fi
+##F01 must be 0/1, thus arbitrary corrected to 0/1 if not sequenced so.
+			if [[ $v2 != $vref"/"$valt ]] && [[ $vpos = $sitel ]]
+			then	v2=$vref"/"$valt
+                                echo -e ">>>>>>>>>Warning: Diseased parent is not heterozygous. Treated as ADO.<<<<<<<<<"
+			fi	
+			cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
+			pb1_ale1=`echo $v3 | tr '/' '\n' | head -n 1`
+			pb1_ale2=`echo $v3 | tr '/' '\n' | tail -n 1`
+			st1_ov=`sed -e 's/'$pb1_ale1'//' -e 's/'$pb1_ale2'//' <(yes $v2 | head -n 2 | tr '/' '\n' | paste -s -d '')`
+			
+			pb2_alex=`echo $v4 | tr '/' '\n' | sort -u`
+			st2_ov=`echo $st1_ov | sed -e 's/'$pb2_alex'//'`
+	
+			echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v3\t$v4\t$cm12\t$st2_ov" >> $OUT/${pp}_GT_${i}_pb.stat
+		# chrX    68162230        G       T       T/T     G/T     T/T	X/X	T       T
+		done < $OUT/${pp}_GT_${i}_pb.diff
+## $9 	nt on disease allele
+## $10 	nt of embryo 
+		awk '$9!="" && $10!=""' $OUT/${pp}_GT_${i}_pb.stat > $OUT/${pp}_GT_${i}_pb.stata	# all
 ##Redefine the non-recombinated region spanning from the disease site   
-        site=`echo "scale=0; ($posl + $posr) / 2" | bc`
-        awk '{if($2 >= '${site}'){print $0}}' $OUT/${pp}_GT_${i}_pb.stata > $OUT/${pp}_GT_${i}_pb.statar
-        awk '{if($2 < '${site}'){print $0}}' $OUT/${pp}_GT_${i}_pb.stata | sort -k 2nr > $OUT/${pp}_GT_${i}_pb.statal
-        rm $OUT/${pp}_GT_${i}_pb.stat.1; same=0; diff=0; for file in "r" "l"
-        do
-                len=0; while read vchr vpos vref valt AA FF P1 P2 AF FZ
-                do
-                        if [ ${AF} = ${FZ} ]
-                        then    if (( $len < 5 )) || (( $same > $diff ))
-                                then    echo -e "$vchr\t$vpos\t$vref\t$valt\t$AA\t$FF\t$P1\t$P2\t$AF\t$FZ" >> $OUT/${pp}_GT_${i}_pb.stat.1
-                                        len=`echo "scale=0; $len + 1" | bc`
-                                        same=`echo "scale=0; $same + 1" | bc`
-                                else    break
-                                fi
-                        elif [ ${AF} != ${FZ} ]
-                        then    if (( $len < 5 )) || (( $diff > $same )) 
-                                then    echo -e "$vchr\t$vpos\t$vref\t$valt\t$AA\t$FF\t$P1\t$P2\t$AF\t$FZ" >> $OUT/${pp}_GT_${i}_pb.stat.1
-                                        len=`echo "scale=0; $len + 1" | bc`
-                                        diff=`echo "scale=0; $diff + 1" | bc`
-                                else    break
-                                fi
-                        fi
-                done < $OUT/${pp}_GT_${i}_pb.stata${file}
-        done
-        sort -k 2n $OUT/${pp}_GT_${i}_pb.stat.1 > $OUT/${pp}_GT_${i}_pb.stata; rm $OUT/${pp}_GT_${i}_pb.stat.1
-##Redefine the non-recombinated region spanning from the disease site   
-##Calulate probablity of disease over normal
-	bedtools intersect -a <(cut -f 1-6,$cla,$clb $OUT/${pp}_PL.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}_pb.stata | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_PL_${i}_pb.stata
-        bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}_pb.stata | cut -f 1-2,4-) -b dbsnp_138.${chr}.freq -wao | awk '{freq=0.001;split($17,AF,",");if($5 == $16 && AF[2] != 0 && AF[2] != 1){freq=AF[2]}; print $1"\t"$3"\t"freq}' | sed 's#]##g' > $OUT/${pp}_freq_${i}_pb.stata
-        N=`cat $OUT/${pp}_GT_${i}_pb.stata | wc -l`
-        site=`echo "scale=0; ($posl + $posr) / 2" | bc`
-        rm $OUT/${pp}_GT_${i}_pb.prob.stata; prob_disease_over_normal=0; f_dis=0; for ll in `seq 1 1 $N`
-        do
-                gt=(`sed -n ''${ll}'p' $OUT/${pp}_GT_${i}_pb.stata`); echo ${gt[@]}
-                pl=(`sed -n ''${ll}'p' $OUT/${pp}_PL_${i}_pb.stata`); echo ${pl[@]}
-                fq=(`sed -n ''${ll}'p' $OUT/${pp}_freq_${i}_pb.stata`); echo ${fq[@]}
-                dis=`awk 'BEGIN{d='${site}'-'${gt[1]}';if('${gt[1]}' > '${site}'){d='${gt[1]}'-'${site}'};printf("%.0f",d)}'`
-                fq_s[0]=`echo "scale=6; (1-${fq[2]})*(1-${fq[2]})" | bc`; fq_s[1]=`echo "scale=6; 2*${fq[2]}*(1-${fq[2]})" | bc`; fq_s[2]=`echo "scale=6; ${fq[2]}*${fq[2]}" | bc`
-                prob_all_gt_right=1; for col in 4 5 6 7
-                do
-                        pl_col=(`echo ${pl[$col]} | sed 's#,# #g'`)
-                        pl_c[0]=${pl_col[0]}; pl_c[1]=${pl_col[1]}; pl_c[2]=${pl_col[2]}
-                        denominator=0; pg0=0; for num in 0 1 2
-                        do      if (( ${pl_c[$num]} == 0 && `expr $pg0 \< ${fq_s[$num]}` == 1 ))
-                                then    pg0=${fq_s[$num]}
-                                fi
-                                denominator=`awk 'BEGIN{printf("%.60f", '$denominator' + '${fq_s[$num]}'/10^('${pl_col[$num]}'/10))}'`
-                        done
-                        prob_gt_right[$col]=`awk 'BEGIN{printf("%.6f", '$pg0' / '$denominator')}'`
-                        prob_all_gt_right=`echo "scale=6; $prob_all_gt_right * ${prob_gt_right[$col]}" | bc`
-                done
-##Recom rate in UCSC hg19 tack is averaged in megabase level, compute base level rate upon this by:
-##      R_jishu=R_oushu*r/(1-r) && R_jishu + R_oushu = 1
-##      Thus, R_jishu=r=r_aver
-                recom=(`awk '{if($2 <= '$site' && $3 >= '$site') print $0}' hg19.recomb_rate.${chr}.txt`)
-		if [[ $recom = "" ]]
-		then	recom=`awk '{sum=sum+$5;N=N+1}END{print sum/N}' hg19.recomb_rate.${chr}.txt`
-		fi
-                P_recom_jishu=`awk 'BEGIN{if('$dis'>0 && '${recom[4]}'>0){printf("%.20f",'${recom[4]}' * '$dis'/100000000)}else{printf("%.20f",1/10^(19))}}'`
-##Prob 3. Add P disease/normal of each site with weight 1/distance
-#                prob_disease_over_normal_i=`awk 'BEGIN{printf("%.60f", log(('$prob_all_gt_right' * (1 - '$P_recom_jishu') + (1 - '$prob_all_gt_right') * '$P_recom_jishu')/('$prob_all_gt_right' * '$P_recom_jishu' + (1 - '$prob_all_gt_right') * (1 - '$P_recom_jishu')))/log(2))}'`
-                prob_disease_over_normal_i=`awk 'BEGIN{printf("%.60f", '$prob_all_gt_right' * log((1 - '$P_recom_jishu')/'$P_recom_jishu')/log(2))}'`
-                if [ ${gt[8]} != ${gt[9]} ];
-                then    prob_disease_over_normal_i=`awk -v temp=$prob_disease_over_normal_i 'BEGIN{printf("%.60f", -1 * temp)}'`     
+	if (( 1 == 2 ))
+	then
+		N=`cat $OUT/${pp}_GT_${i}_pb.stata | wc -l`
+	        n=`awk 'BEGIN{sum=0}{if($8 == $9) sum=sum+1}END{print sum}' $OUT/${pp}_GT_${i}_pb.stata`
+	        awk '{if($2 >= '${siter}'){print $0}}' $OUT/${pp}_GT_${i}_pb.stata > $OUT/${pp}_GT_${i}_pb.statar
+	        awk '{if($2 < '${sitel}'){print $0}}' $OUT/${pp}_GT_${i}_pb.stata | sort -k 2nr > $OUT/${pp}_GT_${i}_pb.statal
+	        rm -f $OUT/${pp}_GT_${i}_pb.stat.1; same=0; diff=0; for file in "r" "l"
+	        do
+	                len=0; while read vchr vpos vref valt AA FF P1 P2 AF FZ
+	                do
+	                        if [ ${AF} = ${FZ} ]
+	                        then    if (( $len < 5 )) || (( $same > $diff ))
+	                                then    echo -e "$vchr\t$vpos\t$vref\t$valt\t$AA\t$FF\t$P1\t$P2\t$AF\t$FZ" >> $OUT/${pp}_GT_${i}_pb.stat.1
+	                                        len=`echo "scale=0; $len + 1" | bc`
+	                                        same=`echo "scale=0; $same + 1" | bc`
+	                                else    break
+	                                fi
+	                        elif [ ${AF} != ${FZ} ]
+	                        then    if (( $len < 5 )) || (( $diff > $same )) 
+	                                then    echo -e "$vchr\t$vpos\t$vref\t$valt\t$AA\t$FF\t$P1\t$P2\t$AF\t$FZ" >> $OUT/${pp}_GT_${i}_pb.stat.1
+	                                        len=`echo "scale=0; $len + 1" | bc`
+	                                        diff=`echo "scale=0; $diff + 1" | bc`
+	                                else    break
+	                                fi
+	                        fi
+	                done < $OUT/${pp}_GT_${i}_pb.stata${file}
+	        done
+	        sort -k 2n  $OUT/${pp}_GT_${i}_pb.stat.1 > $OUT/${pp}_GT_${i}_pb.stata; rm -f $OUT/${pp}_GT_${i}_pb.stat.1
+	##Redefine the non-recombinated region spanning from the disease site   
+	fi
+	##Calulate probablity of disease over normal
+		bedtools intersect -a <(cut -f 1-6,$cla,$clb $OUT/${pp}_PL.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}_pb.stata | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_PL_${i}_pb.stata
+	        bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}_pb.stata | cut -f 1-2,4-) -b dbsnp_138.${chr}.freq -wao | awk '{freq=0.001;split($17,AF,",");if($5 == $16 && AF[2] != 0 && AF[2] != 1){freq=AF[2]}; print $1"\t"$3"\t"freq}' | sed 's#]##g' > $OUT/${pp}_freq_${i}_pb.stata
+	        N=`cat $OUT/${pp}_GT_${i}_pb.stata | wc -l`
+	        rm -f $OUT/${pp}_GT_${i}_pb.gt_prob.temp; rm -f $OUT/${pp}_GT_${i}_pb.prob.stata; rm -f $OUT/${pp}_GT_${i}_pb.all.prob.stata; for ll in `seq 1 1 $N`
+	        do
+	                gt=(`sed -n ''${ll}'p' $OUT/${pp}_GT_${i}_pb.stata`); echo ${gt[@]}
+	                pl=(`sed -n ''${ll}'p' $OUT/${pp}_PL_${i}_pb.stata`); echo ${pl[@]}
+	                fq=(`sed -n ''${ll}'p' $OUT/${pp}_freq_${i}_pb.stata`); echo ${fq[@]}
+	                dis=`awk 'BEGIN{d='${sitel}'-'${gt[1]}';if('${gt[1]}' > '${siter}'){d='${gt[1]}'-'${siter}'};printf("%.0f",d)}'`
+			fq_s[0]=`echo "scale=6; 1/3" | bc`; fq_s[1]=`echo "scale=6; 1/3" | bc`; fq_s[2]=`echo "scale=6; 1/3" | bc`
+##Build a matrix representing single cell amplification error for diploid cell.
+##0: 0/0, 1: 0/1, 2:1/1
+                	G0t0=`awk 'BEGIN{printf("%.60f", 1-'$FP')}'`
+                	G0t1=`awk 'BEGIN{printf("%.60f", (1-'$ADO')*'$FP')}'`
+                	G0t2=`awk 'BEGIN{printf("%.60f", '$ADO'*'$FP')}'`
+                	G1t0=`awk 'BEGIN{printf("%.60f", ('$ADO'+'$FP')/2-'$ADO'*'$FP')}'`
+                	G1t1=`awk 'BEGIN{printf("%.60f", 1-'$ADO'-'$FP'+2*'$ADO'*'$FP')}'`
+                	G1t2=`awk 'BEGIN{printf("%.60f", ('$ADO'+'$FP')/2-'$ADO'*'$FP')}'`
+                	G2t0=`awk 'BEGIN{printf("%.60f", '$ADO'*'$FP')}'`
+                	G2t1=`awk 'BEGIN{printf("%.60f", (1-'$ADO')*'$FP')}'`
+                	G2t2=`awk 'BEGIN{printf("%.60f", 1-'$FP')}'`
+                	G2g=($G0t0 $G0t1 $G0t2 $G1t0 $G1t1 $G1t2 $G2t0 $G2t1 $G2t2)
+##Matrix representing single cell amplification error for haploid cell
+##0:0, 1:1
+			HG0t0=`awk 'BEGIN{printf("%.60f", 1-'$FP')}'`
+			HG0t2=`awk 'BEGIN{printf("%.60f", '$FP')}'`
+			HG2t2=$HG0t0
+			HG2t0=$HG0t2
+			HG2g=($HG0t0 0 $HG0t2 0 0 0 $HG2t0 0 $HG2t2)	##PB2 cannot be 0/1, any transition probability related to 2 is 0.
+
+                	PROB_COM=()
+			COM_COL=(4 5 6 7)
+##PROB_COM will be composed of 11 numbers, A F01 and PB1 each has 3 representing posterior probability of 0/0,0/1,1/1. PB2 has 2 of 0,1.
+                	prob_com_i=0; for col in ${COM_COL[@]}
+			do
+                	        if [[ ${pl[$col]} = "." ]]
+                	        then    prob_com_i=`echo "scale=0; $prob_com_i+3" | bc`
+                	                PROB_COM=(${PROB_COM[@]} 1 1 1)
+                	                continue
+                	        fi
+                	        if (( $prob_com_i <= 2 ))	##gt of A 
+                	        then    fq_s[0]=`echo "scale=6; (1-${fq[2]})*0.5" | bc`; fq_s[1]=0.5; fq_s[2]=`echo "scale=6; ${fq[2]}*0.5" | bc`
+                	        elif (( $prob_com_i <= 5 ))	##gt of F01
+                	        then    fq_s[0]=`echo "scale=6; (1-${fq[2]})*(1-${fq[2]})" | bc`; fq_s[1]=`echo "scale=6; 2*${fq[2]}*(1-${fq[2]})" | bc`; fq_s[2]=`echo "scale=6; ${fq[2]}*${fq[2]}" | bc`
+                	        elif (( $prob_com_i <= 8 ))	##gt of PB1
+				then    fq_s[0]=1/3; fq_s[1]=1/3; fq_s[2]=1/3
+				else				##gt of PB2	
+					fq_s[0]=0.5; fq_s[1]=0; fq_s[2]=0.5
+                	        fi
+                	        pl_col=(`echo ${pl[$col]} | sed 's#,# #g'`)
+                	        pl_c[0]=${pl_col[0]}; pl_c[1]=${pl_col[1]}; pl_c[2]=${pl_col[2]}
+                	        for GG in 0 1 2	##True genotype
+                	        do
+                	                for gg in 0 1 2			##Genotype after amplification
+                	                do
+                	                        G2g_i=`echo "scale=0; $GG*3+$gg" | bc`
+						if (( $prob_com_i >= 9 )) && (( $prob_com_i <= 11 ))
+						then	G2g_value=${HG2g[$G2g_i]}	
+                	                        else	G2g_value=${G2g[$G2g_i]}
+						fi
+                	                        PROB_COM[$prob_com_i]=`awk 'BEGIN{printf("%.60f", '${PROB_COM[$prob_com_i]}'+'${fq_s[$GG]}'*'$G2g_value'/10^('${pl_col[$gg]}'/10))}'`	##Probability P(GG && data)=Pior(GG)*P(gg|GG)*P(read|gg)
+                	                done
+					echo ${PROB_COM[$prob_com_i]}
+                	                prob_com_i=`echo "scale=0; $prob_com_i+1" | bc`
+                	        done
+                	done
+			echo ${PROB_COM[@]}
+			F01_1=`awk 'BEGIN{printf("%.60f",'${PROB_COM[4]}'/('${PROB_COM[3]}'+'${PROB_COM[4]}'+'${PROB_COM[5]}'))}'`
+			A_0=`awk 'BEGIN{printf("%.60f",'${PROB_COM[0]}'/('${PROB_COM[0]}'+'${PROB_COM[1]}'+'${PROB_COM[2]}'))}'`
+			A_2=`awk 'BEGIN{printf("%.60f",'${PROB_COM[2]}'/('${PROB_COM[0]}'+'${PROB_COM[1]}'+'${PROB_COM[2]}'))}'`
+			PB1_0=`awk 'BEGIN{printf("%.60f",'${PROB_COM[6]}'/('${PROB_COM[6]}'+'${PROB_COM[7]}'+'${PROB_COM[8]}'))}'`
+			PB1_1=`awk 'BEGIN{printf("%.60f",'${PROB_COM[7]}'/('${PROB_COM[6]}'+'${PROB_COM[7]}'+'${PROB_COM[8]}'))}'`
+			PB1_2=`awk 'BEGIN{printf("%.60f",'${PROB_COM[8]}'/('${PROB_COM[6]}'+'${PROB_COM[7]}'+'${PROB_COM[8]}'))}'`
+			PB2_0=`awk 'BEGIN{printf("%.60f",'${PROB_COM[9]}'/('${PROB_COM[9]}'+'${PROB_COM[11]}'))}'`
+			PB2_2=`awk 'BEGIN{printf("%.60f",'${PROB_COM[11]}'/('${PROB_COM[9]}'+'${PROB_COM[11]}'))}'`
+			echo -e "${gt[@]}\t$A_0\t$A_2\t$F01_1\t$PB1_0\t$PB1_1\t$PB1_2\t$PB2_0\t$PB2_2" >> $OUT/${pp}_GT_${i}_pb.gt_prob.temp
+
+##Diseae supportive conbination:
+##	F01 && A0/0 && PB1 1/1
+##	F01 && A0/0 && PB1 0/1 && PB2 1/1
+##	F01 && A1/1 && PB1 0/0
+##	F01 && A1/1 && PB1 0/1 && PB2 0/0
+			prob_disease_line=`awk 'BEGIN{printf("%.60f",'$F01_1'*('$A_0'*('$PB1_2'+'$PB1_1'*'$PB2_2')+'$A_2'*('$PB1_0'+'$PB1_1'*'$PB2_0')))}'`
+			prob_normal_line=`awk 'BEGIN{printf("%.60f",'$F01_1'*('$A_2'*('$PB1_2'+'$PB1_1'*'$PB2_2')+'$A_0'*('$PB1_0'+'$PB1_1'*'$PB2_0')))}'`
+			prob_bad_line=`awk 'BEGIN{printf("%.60f",'${prob_disease_line}'+(1-'$prob_disease_line'-'$prob_normal_line')/2)}'`
+			recom=(`awk '{if($2 <= '${gt[1]}' && $3 >= '${gt[1]}') print $0}' hg19.recomb_rate.${chr}.txt`)
+
+			if [[ $recom = "" ]]
+			then	recom=`awk '{sum=sum+$5;N=N+1}END{print sum/N}' hg19.recomb_rate.${chr}.txt`
+			fi
+			echo -e "${gt[@]}\t${recom[4]}\t$prob_bad_line" >> $OUT/${pp}_GT_${i}_pb.all.prob.stata
+			if (( `expr $prob_bad_line \> 0.6` == 1 )) || (( `expr $prob_bad_line \< 0.4` == 1 ))
+                	then    echo -e "${gt[@]}\t${recom[4]}\t$prob_bad_line" >> $OUT/${pp}_GT_${i}_pb.prob.stata
+                	fi
+
+	##
+	        done
+
+function prob_recursive {
+        i=$1;ii=`echo "scale=0; $i + 1" | bc`
+        if (( $ii == ${#PR[@]} ))
+        then    if (( `expr ${PB[$i]} \> 0` )) && (( `expr ${PB[$i]} \< 1` ))
+                then    prob_bad_i=${PB[$i]}
+                elif (( `expr ${PB[$i]} \= 0` ))
+                then    prob_bad_i=`awk 'BEGIN{printf("%.20f",1/10^(16))}'`
+                else    prob_bad_i=`awk 'BEGIN{printf("%.20f",1-1/10^(16))}'`
                 fi
-                prob_disease_over_normal=`awk -v temp=$prob_disease_over_normal 'BEGIN{printf("%.60f",temp + '$prob_disease_over_normal_i')}'`
-#                f_dis=`awk -v temp='$f_dis' 'BEGIN{printf("%.60f", temp + 1/('$dis' + 1)^0.5)}'`
-#		f_dis=`echo "scale=0; $f_dis + 1" | bc`
-		f_dis=`echo "scale=6; $f_dis + $prob_all_gt_right" | bc`
-##Prob 3. Add P disease/normal of each site with weight 1/distance
-##
-                echo -e "${gt[@]}\t$prob_disease_over_normal_i\t$dis\t$P_recom_jishu" | sed 's# #\t#g'>> $OUT/${pp}_GT_${i}_pb.prob.stata
-        done
-        N=`cat $OUT/${pp}_GT_${i}_pb.stata | wc -l`
-        n=`awk 'BEGIN{sum=0}{if($9 == $10) sum=sum+1}END{print sum}' $OUT/${pp}_GT_${i}_pb.stata`
+                prob_good_i=`awk 'BEGIN{printf("%.20f", 1-'${prob_bad_i}')}'`
+        else    PROB_NEXT=(`prob_recursive $ii`)
+                prob_bad_next=${PROB_NEXT[0]};prob_good_next=${PROB_NEXT[1]}
+                prob_bad_i=`awk 'BEGIN{printf("%.60f", '${prob_bad_next}'*'${PB[$i]}'*(1-'${PR[$i]}') + '${prob_good_next}'*(1-'${PB[$i]}')*'${PR[$i]}')}'`
+                prob_good_i=`awk 'BEGIN{printf("%.60f", '${prob_bad_next}'*'${PB[$i]}'*'${PR[$i]}' + '${prob_good_next}'*(1-'${PB[$i]}')*(1-'${PR[$i]}'))}'`
+        fi
+        echo -e "$prob_bad_i\t$prob_good_i"
+}
 
-        prob_disease=`awk 'BEGIN{printf("%.20f", '$prob_disease_over_normal'/'$f_dis')}'`
-	rt=`awk 'BEGIN{printf("%.4f", '$n'/'$N')}'`
-	ty=`awk 'BEGIN{if('$rt'<=0.2 || '$prob_disease' < 0){print "Normal"}else if('$rt'>=0.8 || '$prob_disease' > 0){print "Bad"}}' <<< ""`
-	echo -e "$n / $N = $rt"
-	pposl=`sed -n '1p' $OUT/${pp}_GT_${i}_pb.stata | cut -f 2`
-	pposr=`sed -n '$p' $OUT/${pp}_GT_${i}_pb.stata | cut -f 2`
-	echo -e "$session\t${i}\t$chr\t$pposl\t$pposr\t$n\t$N\t$rt\t$prob_disease\t$ty" >> $OUT/${pp}_report_pb.txt
+		PB=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}_pb.prob.stata | awk '{if($2 >= '$siter'){printf $12"\t"}}'`)	## $12: prob embryo carrying bad allele at the site
+		PR=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}_pb.prob.stata | awk 'BEGIN{f_pos='$siter'}{if($2 >= '$siter'){if($2-f_pos>0 && $11>0){printf("%.20f", ($2-f_pos)*$11/100000000);printf("\t")}else{printf("%.20f",1/10^(19));printf("\t")};f_pos=$2}}'`)	##$11: recom rate in the corresponding 1Mb region of the site
+		if (( ${#PB[@]} > 0 )) && (( ${#PR[@]} > 0 ))
+        	then    PROB_RIGHT=(`prob_recursive 0`);prob_bad_right=${PROB_RIGHT[0]};prob_good_right=${PROB_RIGHT[1]}
+        	else    echo "No linkage site on the right side: ${i}";
+        	        prob_bad_right=0.5; prob_good_right=0.5; site_flag_right=1;
+        	fi	##Prob of disease site on normal/disease allele according to right side sites.
 
-done
+		PB=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}_pb.prob.stata | sort -k 2nr | awk '{if($2 < '$siter'){printf $12"\t"}}'`)
+        	PR=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}_pb.prob.stata | sort -k 2nr | awk 'BEGIN{f_pos='$sitel'}{if($2 < '$siter'){if(f_pos-$2>0 && $11>0){printf("%.20f", (f_pos-$2)*$11/100000000);printf("\t")}else{printf("%.20f",1/10^(19));printf("\t")};f_pos=$2}}'`)
+		if (( ${#PB[@]} > 0 )) && (( ${#PR[@]} > 0 ))
+        	then    PROB_LEFT=(`prob_recursive 0`);prob_bad_left=${PROB_LEFT[0]};prob_good_left=${PROB_LEFT[1]}
+        	else    echo "No linkage site on the left side: ${i}";
+        	        prob_bad_left=0.5; prob_good_left=0.5; site_flag_left=1;
+        	fi
+        	if [[ $site_flag_right = 1 ]] && [[ $site_flag_left = 1 ]]
+        	then    echo "No linkage sites for analysis: ${i}"
+        	        continue;
+        	fi
+        	prob_bad=`awk 'BEGIN{printf("%.60f", '$prob_bad_right'*'$prob_bad_left'/(('$prob_bad_right'*'$prob_bad_left')+('$prob_good_right'*'$prob_good_left')))}'`
+
+        	N=`cat $OUT/${pp}_GT_${i}_pb.prob.stata | wc -l`
+        	n=`awk 'BEGIN{sum=0}{if($9 == $10) sum=sum+1}END{print sum}' $OUT/${pp}_GT_${i}_pb.prob.stata`
+
+		prob_disease=`awk -v OFMT=%.8E 'BEGIN{print '$prob_bad'}'`
+		rt=`awk 'BEGIN{printf("%.4f", '$n'/'$N')}'`
+		ty=`awk 'BEGIN{if('$rt'<=0.4 && '$prob_bad'<10^-4){print "Normal"}else if('$rt'>=0.6 && '$prob_bad'>0.9){print "Disease"}else if('$rt'<=0.4 || '$prob_bad'<10^-4){print "Normal_risk"}else if('$rt'>=0.6 || '$prob_bad'>0.9){print "Disease_risk"}else{print "Risk"}}' <<< ""`
+		echo -e "$n / $N = $rt"
+		pposl=`sed -n '1p' $OUT/${pp}_GT_${i}_pb.stata | cut -f 2`
+		pposr=`sed -n '$p' $OUT/${pp}_GT_${i}_pb.stata | cut -f 2`
+		echo -e "$session\t${i}\t$chr\t$pposl\t$pposr\t$n\t$N\t$rt\t$prob_disease\t$ty" >> $OUT/${pp}_report_pb.txt
+	
+	done
+	fi
 fi
-
 # embryo
+
 echo -e "Session\tID\tchr\tleft\tright\trisk\tall\tratio\tP(disease/normal)\tstate" > $OUT/${pp}_report.txt
 for ii in `seq $ecount`	# each embryo
 do
-	clm=`echo "scale=0; $start_pos+1+$np1_num*2+$ii" | bc`
-	ii_1=`echo "$ii - 1" | bc`
-	i=${numE[$ii_1]}
-	if (( $both_mode == 0 ))
-	then
-		cut -f 1-6,$clm $OUT/${pp}_GT.txt | awk '{split($6,f,"/");if($0!~/\.\/\./ && f[1] != f[2] && $5!=$6 && $6!=$7 && $4!~/\*/) print $0}' | uniq > $OUT/${pp}_GT_${i}.diff
+	clm=`echo "scale=0; $start_pos+$add+1+$np1_num*2+$scount+$ii" | bc`
+	ii_1=`echo "$ii - 1" | bc`; i=${numE[$ii_1]}
+	if (( ${#seqF[@]} == 1 ))
+	then	end_col=6;cut -f 1-6,$clm $OUT/${pp}_GT.txt | awk '{split($6,f,"/");if($2 == '$sitel' || ($0!~/\.\/\./ && f[1] != f[2] && $5!=$6 && $6!=$7 && $4!~/\*/)) print $0}' | uniq > $OUT/${pp}_GT_${i}.diff
 		rm -f $OUT/${pp}_GT_${i}.stat
 	        while read vchr vpos vref valt v1 v2 v3
 	        do
+			if [[ $v1 = $vref"/"$vref ]] && [[ $vpos = $sitel ]]
+			then	v1=$vref"/"$valt
+                                echo -e ">>>>>>>>>Warning: Diseased parent is not heterozygous. Treated as ADO.<<<<<<<<<"
+			fi
 	                cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
 	                cm23=`comm -12 <(echo $v2 | tr '/' '\n' | sort) <(echo $v3 | tr '/' '\n' | sort)`
 	                echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v3\t$cm12\t$cm23" >> $OUT/${pp}_GT_${i}.stat
 	        done < $OUT/${pp}_GT_${i}.diff    
 		awk '$8!="" && $9!=""' $OUT/${pp}_GT_${i}.stat > $OUT/${pp}_GT_${i}.stata
 		CC=(7 8 9)
-	else	# both parents mode
-		bedtools intersect -a <(cut -f 1-7,$clm $OUT/${pp}_GT.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(cut -f 1-7,$clm $OUT/${pp}_DP.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wao | awk '{split($7,f,"/");if(f[1]!=f[2] && $6!=$7 && (($0!~/\.\/\./ && $7==$9 && $8!=$9 && $17>10) || ($7!=$9 && $6!~/\.\/\./ && $7!~/\.\/\./ && $9!~/\.\/\./))) print $0}' | uniq | cut -f 1,3-9 > $OUT/${pp}_GT_${i}.diff
+	else	end_col=`echo "scale=0; 7 + $add" | bc`;end_col2=`echo "scale=0; 9 + $add" | bc`
+##	$(7+'$add')	genotype of F01
+##	$(8+'$add')	genotype of F02
+##	$(6+'$add')	genotype of A
+##	$(9+'$add')	genotype of E 
+##	$(17+'$add'+'$add')	depth of F02
+##	$(18+'$add'+'$add')	depth of E	
+		bedtools intersect -a <(cut -f 1-$end_col,$clm $OUT/${pp}_GT.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(cut -f 1-$end_col,$clm $OUT/${pp}_DP.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wao | awk '{split($(7+'$add'),f,"/");if(($3 == '$sitel') || 
+	(f[1]!=f[2] && $(6+'$add')!=$(7+'$add') && ($(18+'$add'+'$add') > '${depth_limit_em}') && 
+		(($0!~/\.\/\./ && $(7+'$add')==$(9+'$add') && $(8+'$add')!=$(9+'$add') && $(17+'$add'+'$add')>'${depth_limit}') || 
+		($(7+'$add')!=$(9+'$add') && $(6+'$add')!~/\.\/\./ && $(7+'$add')!~/\.\/\./ && $(9+'$add')!~/\.\/\./)))) print $0}' | uniq | cut -f 1,3-$end_col2 > $OUT/${pp}_GT_${i}.diff
+
 #		bedtools intersect -a <(cut -f 1-7,$clm $OUT/${pp}_GT.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(cut -f 1-7,$clm $OUT/${pp}_DP.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wao | awk '{split($7,f,"/");if(f[1]!=f[2] && $6!=$7 && $8!=$7 && $0!~/\.\/\./ && $17>10) print $0}' | uniq | cut -f 1,3-9 > $OUT/${pp}_GT_${i}.diff 
 		rm -f $OUT/${pp}_GT_${i}.stat
-		while read vchr vpos vref valt v1 v2 v21 v3
+		if [[ $seqA = "" ]]
+		then
+		while read vchr vpos vref valt v2 v21 v3
 		do
-			cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
+##v2,v21,v3: gt of F01,F02 and E
+			if [[ $vpos = $sitel ]] 
+                        then    if [[ $v2 = $vref"/"$vref ]] || [[ $v2 = $valt"/"$valt ]] 
+                                then    v2=$vref"/"$valt
+                                        echo -e ">>>>>>>>>Warning: Diseased parent is not heterozygous. Treated as ADO.<<<<<<<<<"
+                                fi   
+                                if [[ $v21 != $vref"/"$vref ]]
+                                then    v21=$vref"/"$vref
+                                        echo -e ">>>>>>>>>Warning: Mutation detected in Normal parent. Treated as FP.<<<<<<<<<" 
+                                fi   
+                        fi   
 			if [[ $v2 != $v3 ]]
 			then	cm23=`comm -12 <(echo $v2 | tr '/' '\n' | sort) <(echo $v3 | tr '/' '\n' | sort)`	
 				F02_used=0
 			else	cm213=`comm -12 <(echo $v21 | tr '/' '\n' | sort) <(echo $v3 | tr '/' '\n' | sort)`
+				if [[ $cm213 = "" ]]
+				then	continue	
+				fi
 				cm23=`echo $v3 | sed 's#/##' | sed 's#'$cm213'##'`
 				F02_used=1
 			fi
-			echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v21\t$v3\t$cm12\t$cm23\t$F02_used" >> $OUT/${pp}_GT_${i}.stat
+			if [[ $vpos = $sitel ]]
+			then	echo "$i$vchr\t$vpos\t$vref\t$valt\t$v2\t$v21\t$v3\t$cm23\t$F02_used"
+			fi
+			if [[ $cm23 != "" ]]
+			then	echo -e "$vchr\t$vpos\t$vref\t$valt\t$v2\t$v21\t$v3\t$cm23\t$F02_used" >> $OUT/${pp}_GT_${i}.stat
+			fi
 		done < $OUT/${pp}_GT_${i}.diff		# DP>2
-#		bedtools intersect -a <(awk '{if($9!="" && $10!="") print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stat | cut -f 1-2,4-) -b <(cut -f 1-7,$clm $OUT/${pp}_DP.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wao | uniq | awk '{if($20>=10) print $0}' | cut -f 1,3-11 > $OUT/${pp}_GT_${i}.stata
+		awk '{if($8!="") print $0}' $OUT/${pp}_GT_${i}.stat > $OUT/${pp}_GT_${i}.stata
+		else
+                while read vchr vpos vref valt v1 v2 v21 v3
+                do
+			if [[ $vpos = $sitel ]] 
+                        then    if [[ $v2 = $vref"/"$vref ]] || [[ $v2 = $valt"/"$valt ]] 
+                                then    v2=$vref"/"$valt
+                                        echo -e ">>>>>>>>>Warning: Diseased parent is not heterozygous. Treated as ADO.<<<<<<<<<"
+                                fi   
+                                if [[ $v21 != $vref"/"$vref ]]
+                                then    v21=$vref"/"$vref
+                                        echo -e ">>>>>>>>>Warning: Mutation detected in Normal parent. Treated as FP.<<<<<<<<<" 
+                                fi   
+                        fi   
+                        cm12=`comm -12 <(echo $v1 | tr '/' '\n' | sort) <(echo $v2 | tr '/' '\n' | sort)`
+                        if [[ $v2 != $v3 ]]
+                        then    cm23=`comm -12 <(echo $v2 | tr '/' '\n' | sort) <(echo $v3 | tr '/' '\n' | sort)`       
+                                F02_used=0
+                        else    cm213=`comm -12 <(echo $v21 | tr '/' '\n' | sort) <(echo $v3 | tr '/' '\n' | sort)`
+                                cm23=`echo $v3 | sed 's#/##' | sed 's#'$cm213'##'`
+                                F02_used=1
+                        fi
+			if [[ $cm12 != "" ]] && [[ $cm23 != "" ]]
+			then	echo -e "$vchr\t$vpos\t$vref\t$valt\t$v1\t$v2\t$v21\t$v3\t$cm12\t$cm23\t$F02_used" >> $OUT/${pp}_GT_${i}.stat
+			fi
+                done < $OUT/${pp}_GT_${i}.diff           # DP>2
 		awk '{if($9!="" && $10!="") print $0}' $OUT/${pp}_GT_${i}.stat > $OUT/${pp}_GT_${i}.stata
-		CC=(8 9 10)
+		fi
+		CC=(7 8 9); if [[ $seqA != "" ]]
+		then	CC=(8 9 10)
+		fi
 	fi
 	## chrX    68162230        G       T       T/T     G/T     G/G
 	## chrX    68162230        G       T       T/T     G/T     T/T
+done	
+##If no diseased gandparent or diseased born child is given, calculate the GT of disease site of every linkage site.
+if [[ $seqA = "" ]]
+then
+	if (( $scount > 0 ))
+	then	sclm=`echo "scale=0; $start_pos+$add+1+$np1_num*2" | bc`
+		eclm=`echo "scale=0; $start_pos+$add+1+$np1_num*2+$scount" | bc`
+		cut -f 1-6,$sclm-$eclm $OUT/${pp}_GT.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4- | awk '{split($6,f01gt,"/");if(f01gt[1]!=f01gt[2] || $3 == '$sitel' || $3 == '$siter'){printf($1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7);for(i=8;i<=NF;i++){if($i=="./."){printf("\t.")}else{split($i,gt,"/");{if(gt[1]==gt[2]){printf("\t"gt[1])}else{printf("\t.")}}}};printf("\n")}}' | sed 's#\.#-1#g' > $OUT/${pp}_GT_FZ.txt
+	else	cut -f 1-6 $OUT/${pp}_GT.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4- > $OUT/${pp}_GT_FZ.txt
+	fi
+	for ii in `seq $ecount` # each embryo
+	do
+        	ii_1=`echo "$ii - 1" | bc`; i=${numE[$ii_1]}
+	        c1=`echo "scale=0; 6 + $scount + ${ii}" | bc`; c2=`echo "scale=0; 10 + $scount + $ii" | bc`
+	        intersectBed -a $OUT/${pp}_GT_FZ.txt -b <(cut -f 1-2,8 $OUT/${pp}_GT_${i}.stata | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wao | uniq | sed 's#\t\t#\t-1\t#g' | cut -f 1-$c1,$c2 > $OUT/temp.txt
+	        mv $OUT/temp.txt $OUT/${pp}_GT_FZ.txt
+	done
+	awk '{sum=0;for(i=8;i<=NF;i++){sum=sum+$i};if(sum!=7-NF){print $0}}' $OUT/${pp}_GT_FZ.txt > $OUT/temp.txt; mv $OUT/temp.txt $OUT/${pp}_GT_FZ.txt
 	
+	line=`awk '{if($3 == '$sitel') print NR}' $OUT/${pp}_GT_FZ.txt`
+	if [[ $line == "" ]]
+	then	echo "The disease site is not amplified while the proband is absent, linkage analysis is not available."
+		exit
+		line=`awk 'BEGIN{max=NF-7;line=1}{sum=0;for(i=8;i<=NF;i++){sum=sum+$i};if(sum>max){max=sum;line=NR}}END{print line}' $OUT/${pp}_GT_FZ.txt`
+	fi
+#	line=`awk '{if($3 == '$sitel') print NR}' $OUT/${pp}_GT_FZ.txt`
+	N=(4 5);TY=("ref" "alt")
+	rm -f $OUT/${pp}_GT_FZ_*.txt
+	for i in 0 1
+	do
+                col=(`sed -n ''$line'p' $OUT/${pp}_GT_FZ.txt | awk '{for(i=8;i<=NF;i++){if($i==$'${N[$i]}') print i}}'`); site_i=`sed -n ''$line'p' $OUT/${pp}_GT_FZ.txt | cut -f 3`
+		if (( ${#col[@]} <= 1 )) 
+		then	continue	
+		fi
+                echo ${col[@]};
+                cols=`echo ${col[@]} | sed 's# #,#g'`
+                cut -f 1-7,$cols $OUT/${pp}_GT_FZ.txt > $OUT/${pp}_GT_FZ_${site_i}_${TY[$i]}.txt   
+##inconsistent sample num no more than 1.
+		##Total called sample in ref or alt group: NF-7-N[-1]
+                awk -v OFS="\t" '{N[$4]=0;N[$5]=0;N[-1]=0;for(i=8;i<=NF;i++){N[$i]=N[$i]+1};nt="-1";if(N[$4]>=NF-8-N[-1] && N[$4] > N[$5]){nt=$4}else{if(N[$5]>=NF-8-N[-1] && N[$5] > N[$4]){nt=$5}}; print $1,$3,$4,$5,$6,$7,nt}' $OUT/${pp}_GT_FZ_${site_i}_${TY[$i]}.txt > $OUT/${pp}_GT_FZ_${site_i}_${TY[$i]}_allele.txt   
+	done	
+	if [ -f $OUT/${pp}_GT_FZ_${site_i}_ref_allele.txt ] && [ -f $OUT/${pp}_GT_FZ_${site_i}_alt_allele.txt ]
+	then	N=`cat $OUT/${pp}_GT_FZ_${site_i}_ref_allele.txt | wc -l`		
+	elif [ -f $OUT/${pp}_GT_FZ_${site_i}_ref_allele.txt ]
+	then	N=`cat $OUT/${pp}_GT_FZ_${site_i}_ref_allele.txt | wc -l`
+		awk '{print $0"\t-1"}' $OUT/${pp}_GT_FZ_${site_i}_ref_allele.txt | cut -f 1-6,8 > $OUT/${pp}_GT_FZ_${site_i}_alt_allele.txt
+	elif [ -f $OUT/${pp}_GT_FZ_${site_i}_alt_allele.txt ]
+	then	N=`cat $OUT/${pp}_GT_FZ_${site_i}_alt_allele.txt | wc -l`
+		awk '{print $0"\t-1"}' $OUT/${pp}_GT_FZ_${site_i}_alt_allele.txt | cut -f 1-6,8 > $OUT/${pp}_GT_FZ_${site_i}_ref_allele.txt
+	fi
+	rm -f $OUT/${pp}_GT_FZ_${site_i}_ref_allele_revised.txt
+	rm -f $OUT/${pp}_GT_FZ_${site_i}_alt_allele_revised.txt
+	for i in `seq 1 1 $N`
+	do
+		REF=(`sed -n ''$i'p' $OUT/${pp}_GT_FZ_${site_i}_ref_allele.txt`)
+		ALT=(`sed -n ''$i'p' $OUT/${pp}_GT_FZ_${site_i}_alt_allele.txt`)
+		if [[ ${REF[6]} = ${ALT[6]} ]]
+		then	REF[6]=-1; ALT[6]=-1;
+		elif [[ ${REF[6]} = "-1" ]]
+		then	REF[6]=`echo ${ALT[2]}${ALT[3]} | sed 's#'${ALT[6]}'##'`
+		elif [[ ${ALT[6]} = "-1" ]]
+		then	ALT[6]=`echo ${REF[2]}${REF[3]} | sed 's#'${REF[6]}'##'`
+		fi
+		if [[ $pp = "case1" ]]
+		then	site_marker=44100542
+		fi
+		disease=alt;if [[ ${REF[1]} = ${sitel} ]] && [[ ${REF[6]} = ${REF[3]} ]]
+		then	disease=ref
+		fi
+		echo ${REF[@]} | sed 's# #\t#g' >> $OUT/${pp}_GT_FZ_${site_i}_ref_allele_revised.txt
+		echo ${ALT[@]} | sed 's# #\t#g' >> $OUT/${pp}_GT_FZ_${site_i}_alt_allele_revised.txt
+	done
+        for ii in `seq $ecount` # each embryo
+        do
+                ii_1=`echo "$ii - 1" | bc`; i=${numE[$ii_1]}
+                c1=`echo "scale=0; 6 + ${ii}" | bc`; c2=`echo "scale=0; 10 + $ii" | bc`
+		bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_FZ_${site_i}_${disease}_allele_revised.txt | cut -f 1-2,4-) -b <(cut -f 1-2,7-8 $OUT/${pp}_GT_${i}.stata | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -wo | uniq | awk -v OFS="\t" '{if($8 != -1) print $1,$3,$4,$5,$6,$7,$12,$8,$13,$14}' > $OUT/${pp}_GT_${i}.stata.1 
+		mv $OUT/${pp}_GT_${i}.stata.1 $OUT/${pp}_GT_${i}.stata
+	done
+fi
+##If no diseased gandparent or diseased born child is given, calculate the GT of disease site of every linkage site.
 ##If extend from the disease site, not use filter A != 0/0, too stringent.
+for ii in `seq $ecount`
+do
+	ii_1=`echo "$ii - 1" | bc`; i=${numE[$ii_1]}
+        clm=`echo "scale=0; $start_pos+$add+1+$np1_num*2+$scount+$ii" | bc`
 	N=`cat $OUT/${pp}_GT_${i}.stata | wc -l`
 	n=`awk 'BEGIN{sum=0}{if($'${CC[0]}' == $'${CC[1]}') sum=sum+1}END{print sum}' $OUT/${pp}_GT_${i}.stata`
 ##Redefine the non-recombinated region spanning from the disease site	
-	site=`echo "scale=0; ($posl + $posr) / 2" | bc`
-	awk '{if($2 >= '${site}'){print $0}}' $OUT/${pp}_GT_${i}.stata > $OUT/${pp}_GT_${i}.statar
-	awk '{if($2 < '${site}'){print $0}}' $OUT/${pp}_GT_${i}.stata | sort -k 2nr > $OUT/${pp}_GT_${i}.statal
-	rm $OUT/${pp}_GT_${i}.stat.1; same=0; diff=0; for file in "r" "l" 
+	awk '{if($2 >= '${siter}'){print $0}}' $OUT/${pp}_GT_${i}.stata > $OUT/${pp}_GT_${i}.statar
+	awk '{if($2 < '${sitel}'){print $0}}' $OUT/${pp}_GT_${i}.stata | sort -k 2nr > $OUT/${pp}_GT_${i}.statal
+if (( 1 == 2 ))
+then
+	rm -f $OUT/${pp}_GT_${i}.stat.1; same=0; diff=0; for file in "l" "r" 
 	do
 		len=0; N=`cat $OUT/${pp}_GT_${i}.stata${file} | wc -l`
 		for ll in `seq 1 1 $N`
@@ -861,12 +1245,15 @@ do
 			fi
 		done 
 	done
-	sort -k 2n  $OUT/${pp}_GT_${i}.stat.1 > $OUT/${pp}_GT_${i}.stata; rm $OUT/${pp}_GT_${i}.stat.1
-	if (( $both_mode == 0 ))
-	then	bedtools intersect -a <(cut -f 1-6,$clm $OUT/${pp}_PL.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_PL_${i}.stata 
-		bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) -b dbsnp_138.${chr}.freq -wao | awk '{freq=0.001;split($16,AF,",");if($5 == $15){freq=AF[2]}; print $0"\t"freq}' | cut -f 1,3,18 | sed 's#]##g' > $OUT/${pp}_freq_${i}.stata
-	else	bedtools intersect -a <(cut -f 1-7,$clm $OUT/${pp}_PL.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_PL_${i}.stata 
-		bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) -b dbsnp_138.${chr}.freq -wao | awk '{freq=0.001;split($18,AF,",");if($5 == $17){freq=AF[2]}; print $0"\t"freq}' | cut -f 1,3,20 | sed 's#]##g' > $OUT/${pp}_freq_${i}.stata
+	sort -k 2n  $OUT/${pp}_GT_${i}.stat.1 > $OUT/${pp}_GT_${i}.stata; 
+fi
+#	rm -f $OUT/${pp}_GT_${i}.stat.1
+	bedtools intersect -a <(cut -f 1-$end_col,$clm $OUT/${pp}_PL.txt | awk '{print $1"\t"$2-1"\t"$0}' | cut -f 1-2,4-) -b <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) | cut -f 1,3- > $OUT/${pp}_PL_${i}.stata 
+	if (( ${#seqF[@]} == 2 )) && [[ $seqA != "" ]] 
+	then	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) -b dbsnp_138.${chr}.freq -wao | awk '{freq=0.001;split($18,AF,",");if($5 == $17){freq=AF[2]}; print $0"\t"freq}' | cut -f 1,3,20 | sed 's#]##g' > $OUT/${pp}_freq_${i}.stata
+	elif (( ${#seqF[@]} == 2 )) && [[ $seqA = "" ]]
+	then	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) -b dbsnp_138.${chr}.freq -wao | awk '{freq=0.001;split($17,AF,",");if($5 == $16){freq=AF[2]}; print $0"\t"freq}' | cut -f 1,3,19 | sed 's#]##g' > $OUT/${pp}_freq_${i}.stata
+	else	bedtools intersect -a <(awk '{print $1"\t"$2-1"\t"$0}' $OUT/${pp}_GT_${i}.stata | cut -f 1-2,4-) -b dbsnp_138.${chr}.freq -wao | awk '{freq=0.001;split($16,AF,",");if($5 == $15){freq=AF[2]}; print $0"\t"freq}' | cut -f 1,3,18 | sed 's#]##g' > $OUT/${pp}_freq_${i}.stata
 	fi
 ##Redefine the non-recombinated region spanning from the disease site	
 ##Calculate probability of disease allele around the site.
@@ -877,71 +1264,145 @@ do
 ##	g2: 	the GT with the max PL
 ##	p(g):	use value in dbsnp_138
 	N=`cat $OUT/${pp}_GT_${i}.stata | wc -l`
-	site=`echo "scale=0; ($posl + $posr) / 2" | bc`
-	rm $OUT/${pp}_GT_${i}.prob.stata; prob_disease_over_normal=0; f_dis=0;for ll in `seq 1 1 $N`
+	rm -f $OUT/${pp}_GT_${i}.gt_temp; rm -f $OUT/${pp}_GT_${i}.prob.stata; rm -f $OUT/${pp}_GT_${i}.all.prob.stata; for ll in `seq 1 1 $N`
 	do
 		gt=(`sed -n ''${ll}'p' $OUT/${pp}_GT_${i}.stata`); echo ${gt[@]}
 		pl=(`sed -n ''${ll}'p' $OUT/${pp}_PL_${i}.stata`); echo ${pl[@]}
 		fq=(`sed -n ''${ll}'p' $OUT/${pp}_freq_${i}.stata`); echo ${fq[@]}
-		dis=`awk 'BEGIN{d='${site}'-'${gt[1]}';if('${gt[1]}' > '${site}'){d='${gt[1]}'-'${site}'};printf("%.0f",d)}'`
-		fq_s[0]=`echo "scale=6; (1-${fq[2]})*(1-${fq[2]})" | bc`; fq_s[1]=`echo "scale=6; 2*${fq[2]}*(1-${fq[2]})" | bc`; fq_s[2]=`echo "scale=6; ${fq[2]}*${fq[2]}" | bc`
-		if (( $both_mode == 1 && ${gt[10]} == 1 ))
+		dis=`awk 'BEGIN{d='${sitel}'-'${gt[1]}';if('${gt[1]}' > '${siter}'){d='${gt[1]}'-'${siter}'};printf("%.0f",d)}'`
+		fq_s[0]=`echo "scale=6; (1-${fq[2]})*(1-${fq[2]})" | bc`; fq_s[1]=`echo "scale=6; 2*${fq[2]}*(1-${fq[2]})" | bc`; fq_s[2]=`echo "scale=6; ${fq[2]}*${fq[2]}" | bc`	
+		if (( ${#seqF[@]} == 2 && ${gt[${CC[2]}]} == 1 )) && [[ $seqA != "" ]]
 		then	COL=(4 5 6 7)
-		elif (( $both_mode == 1 && ${gt[10]} == 0 ))
+		elif (( ${#seqF[@]} == 2 && ${gt[${CC[2]}]} == 0 )) && [[ $seqA != "" ]]
 		then	COL=(4 5 7)
 		else	COL=(4 5 6)
 		fi
-		
-		prob_all_gt_right=1
-		for col in ${COL[@]} 
+##Build a matrix representing single cell amplification error.
+##0: 0/0, 1: 0/1, 2:1/1
+		G0t0=`awk 'BEGIN{printf("%.60f", 1-'$FP')}'`
+		G0t1=`awk 'BEGIN{printf("%.60f", (1-'$ADO')*'$FP')}'`
+		G0t2=`awk 'BEGIN{printf("%.60f", '$ADO'*'$FP')}'`
+		G1t0=`awk 'BEGIN{printf("%.60f", ('$ADO'+'$FP')/2-'$ADO'*'$FP')}'`
+		G1t1=`awk 'BEGIN{printf("%.60f", 1-'$ADO'-'$FP'+2*'$ADO'*'$FP')}'`
+		G1t2=`awk 'BEGIN{printf("%.60f", ('$ADO'+'$FP')/2-'$ADO'*'$FP')}'`
+		G2t0=`awk 'BEGIN{printf("%.60f", '$ADO'*'$FP')}'`
+		G2t1=`awk 'BEGIN{printf("%.60f", (1-'$ADO')*'$FP')}'`
+		G2t2=`awk 'BEGIN{printf("%.60f", 1-'$FP')}'`
+		G2g=($G0t0 $G0t1 $G0t2 $G1t0 $G1t1 $G1t2 $G2t0 $G2t1 $G2t2)
+		COM_COL=(${COL[@]}); if [[ $seqA != "" ]]
+		then	COM_COL=(5 6 7 4)
+		fi
+		PROB_COM=()
+		prob_com_i=0; for col in ${COM_COL[@]} 
 		do
+			if [[ ${pl[$col]} = "." ]]
+			then	prob_com_i=`echo "scale=0; $prob_com_i+3" | bc`
+				PROB_COM=(${PROB_COM[@]} 1 1 1)
+				continue
+			fi
+			if (( $prob_com_i <= 5 ))	##gt of F01, F02
+			then	fq_s[0]=`echo "scale=6; (1-${fq[2]})*(1-${fq[2]})" | bc`; fq_s[1]=`echo "scale=6; 2*${fq[2]}*(1-${fq[2]})" | bc`; fq_s[2]=`echo "scale=6; ${fq[2]}*${fq[2]}" | bc`
+			else	fq_s[0]=`echo "scale=6; (1-${fq[2]})*0.5" | bc`; fq_s[1]=0.5; fq_s[2]=`echo "scale=6; ${fq[2]}*0.5" | bc`	##gt of Em, A
+			fi
 			pl_col=(`echo ${pl[$col]} | sed 's#,# #g'`)
 			pl_c[0]=${pl_col[0]}; pl_c[1]=${pl_col[1]}; pl_c[2]=${pl_col[2]}
-			denominator=0; pg0=0; for num in 0 1 2
+			for GG in 0 1 2
 			do
-				if (( ${pl_c[$num]} == 0 && `expr $pg0 \< ${fq_s[$num]}` == 1 ))
-				then	pg0=${fq_s[$num]}
-				fi
-				denominator=`awk 'BEGIN{printf("%.60f", '$denominator' + '${fq_s[$num]}'/10^('${pl_col[$num]}'/10))}'`	
+				for gg in 0 1 2
+				do	
+					G2g_i=`echo "scale=0; $GG*3+$gg" | bc`
+					G2g_value=${G2g[$G2g_i]}
+					PROB_COM[$prob_com_i]=`awk 'BEGIN{printf("%.60f", '${PROB_COM[$prob_com_i]}'+'${fq_s[$GG]}'*'$G2g_value'/10^('${pl_col[$gg]}'/10))}'`	
+				done
+				prob_com_i=`echo "scale=0; $prob_com_i+1" | bc`
 			done
-			prob_gt_right[$col]=`awk 'BEGIN{printf("%.6f", '$pg0' / '$denominator')}'`
-			prob_all_gt_right=`echo "scale=6; $prob_all_gt_right * ${prob_gt_right[$col]}" | bc`	
 		done
-##Recom rate in UCSC hg19 tack is averaged in megabase level, compute base level rate upon this by:
-##	R_jishu=R_oushu*r/(1-r) && R_jishu + R_oushu = 1
-##	Thus, R_jishu=r=r_aver
-		recom=(`awk '{if($2 <= '$site' && $3 >= '$site') print $0}' hg19.recomb_rate.${chr}.txt`)	
+		F01_1=`awk 'BEGIN{printf("%.60f",'${PROB_COM[1]}'/('${PROB_COM[0]}'+'${PROB_COM[1]}'+'${PROB_COM[2]}'))}'`
+		F02_0=`awk 'BEGIN{printf("%.60f",'${PROB_COM[3]}'/('${PROB_COM[3]}'+'${PROB_COM[4]}'+'${PROB_COM[5]}'))}'`
+		F02_2=`awk 'BEGIN{printf("%.60f",'${PROB_COM[5]}'/('${PROB_COM[3]}'+'${PROB_COM[4]}'+'${PROB_COM[5]}'))}'`
+		E_0=`awk 'BEGIN{printf("%.60f",'${PROB_COM[6]}'/('${PROB_COM[6]}'+'${PROB_COM[7]}'+'${PROB_COM[8]}'))}'`
+		E_1=`awk 'BEGIN{printf("%.60f",'${PROB_COM[7]}'/('${PROB_COM[6]}'+'${PROB_COM[7]}'+'${PROB_COM[8]}'))}'`
+		E_2=`awk 'BEGIN{printf("%.60f",'${PROB_COM[8]}'/('${PROB_COM[6]}'+'${PROB_COM[7]}'+'${PROB_COM[8]}'))}'`
+		if [[ ${PROB_COM[9]} != "" ]]
+		then	A_0=`awk 'BEGIN{printf("%.60f",'${PROB_COM[9]}'/('${PROB_COM[9]}'+'${PROB_COM[10]}'+'${PROB_COM[11]}'))}'`
+			A_2=`awk 'BEGIN{printf("%.60f",'${PROB_COM[11]}'/('${PROB_COM[9]}'+'${PROB_COM[10]}'+'${PROB_COM[11]}'))}'`
+		elif [[ ${gt[7]} = ${gt[2]} ]]
+		then	A_0=1; A_2=0
+		else	A_0=0; A_2=1
+		fi
+		echo -e "${gt[@]}\t$A_0\t$A_2\t$F01_1\t$F02_0\t$F02_2\t$E_0\t$E_1\t$E_2" >> $OUT/${pp}_GT_${i}.gt_temp
+		prob_disease_line=`awk 'BEGIN{printf("%.60f",'$F01_1'*('$E_0'*'$A_0'+'$E_2'*'$A_2'+'$E_1'*('$F02_0'*'$A_2'+'$F02_2'*'$A_0')))}'`	
+		prob_normal_line=`awk 'BEGIN{printf("%.60f",'$F01_1'*('$E_0'*'$A_2'+'$E_2'*'$A_0'+'$E_1'*('$F02_0'*'$A_0'+'$F02_2'*'$A_2')))}'`
+		prob_bad_line=`awk 'BEGIN{printf("%.60f",'${prob_disease_line}'+(1-'$prob_disease_line'-'$prob_normal_line')/2)}'`
+		recom=(`awk '{if($2 <= '${gt[1]}' && $3 >= '${gt[1]}') print $0}' hg19.recomb_rate.${chr}.txt`)	
 		if [[ $recom = "" ]]
 		then	recom=`awk '{sum=sum+$5;N=N+1}END{print sum/N}' hg19.recomb_rate.${chr}.txt`
 		fi
-                P_recom_jishu=`awk 'BEGIN{if('$dis'>0 && '${recom[4]}'>0){printf("%.20f",'${recom[4]}' * '$dis'/100000000)}else{printf("%.20f",1/10^(19))}}'`
-#		P_recom_jishu=`awk 'BEGIN{printf("%.6f",'${recom[4]}' * '$dis'/100000000)}'`
-##Prob 3. Add P disease/normal of each site with weight 1/distance
-                prob_disease_over_normal_i=`awk 'BEGIN{printf("%.60f", '$prob_all_gt_right' * log((1 - '$P_recom_jishu')/'$P_recom_jishu')/log(2))}'`
-#		prob_disease_over_normal_i=`awk 'BEGIN{printf("%.60f", log(('$prob_all_gt_right' * (1 - '$P_recom_jishu') + (1 - '$prob_all_gt_right') * '$P_recom_jishu')/('$prob_all_gt_right' * '$P_recom_jishu' + (1 - '$prob_all_gt_right') * (1 - '$P_recom_jishu')))/log(2))}'`
-#		prob_disease_over_normal_i=`awk 'BEGIN{printf("%.60f", log(('$prob_all_gt_right' * (1 - '$P_recom_jishu'))/('$prob_all_gt_right' * '$P_recom_jishu')))}'`
-		if [ ${gt[${CC[0]}]} != ${gt[${CC[1]}]} ]; 
-		then	prob_disease_over_normal_i=`awk -v temp=$prob_disease_over_normal_i 'BEGIN{printf("%.60f", -1 * temp)}'`	
-		fi
-		prob_disease_over_normal=`awk -v temp=$prob_disease_over_normal 'BEGIN{printf("%.60f",temp + '$prob_disease_over_normal_i')}'`
-		f_dis=`echo "scale=6; $f_dis + $prob_all_gt_right" | bc`
 ##Prob 3. Add P normal of each site with weight 1/distance
 ##
-		echo -e "${gt[@]}\t$prob_disease_over_normal_i\t$dis\t$P_recom_jishu\t$prob_all_gt_right" >> $OUT/${pp}_GT_${i}.prob.stata
+		echo ${PROB_COM[@]}
+		echo -e "${gt[@]}\t${recom[4]}\t$prob_bad_line" >> $OUT/${pp}_GT_${i}.all.prob.stata
+		if (( `expr $prob_bad_line \> 0.6` == 1 )) || (( `expr $prob_bad_line \< 0.4` == 1 ))
+		then	echo -e "${gt[@]}\t${recom[4]}\t$prob_bad_line" >> $OUT/${pp}_GT_${i}.prob.stata
+		fi
 	done
 ##Calculate probability of disease allele around the site.
-	
-	N=`cat $OUT/${pp}_GT_${i}.stata | wc -l`
-	n=`awk 'BEGIN{sum=0}{if($'${CC[1]}' == $'${CC[2]}') sum=sum+1}END{print sum}' $OUT/${pp}_GT_${i}.stata`
+##Calculate the prob(all_sites_on_one_side|bad_at_disease_site) and prob(all_sites_on_one_side|good_at_disease_site) in a recursive way.
+##In the main part, prob_bad_i means prob(all_sites_on_one_site_of_site_i|bad_at_site_i)
+##                  prob_good_i means prob(all_sites_on_one_site_of_site_i|good_at_site_i)
+function prob_recursive {
+        i=$1;ii=`echo "scale=0; $i + 1" | bc`
+        if (( $ii == ${#PR[@]} ))
+        then    if (( `expr ${PB[$i]} \> 0` )) && (( `expr ${PB[$i]} \< 1` ))
+		then	prob_bad_i=${PB[$i]}
+		elif (( `expr ${PB[$i]} \= 0` )) 
+		then	prob_bad_i=`awk 'BEGIN{printf("%.20f",1/10^(16))}'`
+		else	prob_bad_i=`awk 'BEGIN{printf("%.20f",1-1/10^(16))}'`
+		fi
+                prob_good_i=`awk 'BEGIN{printf("%.20f", 1-'${prob_bad_i}')}'`
+        else    PROB_NEXT=(`prob_recursive $ii`)
+                prob_bad_next=${PROB_NEXT[0]};prob_good_next=${PROB_NEXT[1]}
+                prob_bad_i=`awk 'BEGIN{printf("%.60f", '${prob_bad_next}'*'${PB[$i]}'*(1-'${PR[$i]}') + '${prob_good_next}'*(1-'${PB[$i]}')*'${PR[$i]}')}'`
+                prob_good_i=`awk 'BEGIN{printf("%.60f", '${prob_bad_next}'*'${PB[$i]}'*'${PR[$i]}' + '${prob_good_next}'*(1-'${PB[$i]}')*(1-'${PR[$i]}'))}'`
+        fi
+        echo -e "$prob_bad_i\t$prob_good_i"
+}
+        if (( ${#seqF[@]} == 1 )) && [[ $seqA != "" ]]
+        then    col_add=3
+        else    col_add=4
+        fi
+#        PB=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}.prob.stata | awk '{if($2 >= '$siter'){if($('${CC[1]}') == $('${CC[2]}')){printf $('$col_add'+'${CC[1]}')/2+0.5"\t"}else{printf 0.5-$('$col_add'+'${CC[1]}')/2"\t"}}}'`)
+	PB=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}.prob.stata | awk '{if($2 >= '$siter'){printf $('$col_add'+'${CC[1]}')"\t"}}'`)
+        PR=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}.prob.stata | awk 'BEGIN{f_pos='$siter'}{if($2 >= '$siter'){if($2-f_pos>0 && $('$col_add'+'${CC[1]}'-1)>0){printf("%.20f", ($2-f_pos)*$('$col_add'+'${CC[1]}'-1)/100000000);printf("\t")}else{printf("%.20f",1/10^(19));printf("\t")};f_pos=$2}}'`)
+	if (( ${#PB[@]} > 0 )) && (( ${#PR[@]} > 0 ))
+        then	PROB_RIGHT=(`prob_recursive 0`);prob_bad_right=${PROB_RIGHT[0]};prob_good_right=${PROB_RIGHT[1]}
+	else	echo "No linkage site on the right side: ${i}"; 
+		prob_bad_right=0.5; prob_good_right=0.5; site_flag_right=1;
+	fi
+#        PB=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}.prob.stata | sort -k 2nr | awk '{if($2 < '$sitel'){if($('${CC[1]}') == $('${CC[2]}')){printf $('$col_add'+'${CC[1]}')/2+0.5"\t"}else{printf 0.5-$('$col_add'+'${CC[1]}')/2"\t"}}}'`)
+	PB=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}.prob.stata | sort -k 2nr | awk '{if($2 < '$siter'){printf $('$col_add'+'${CC[1]}')"\t"}}'`)
+        PR=(`sed 's# #\t#g' $OUT/${pp}_GT_${i}.prob.stata | sort -k 2nr | awk 'BEGIN{f_pos='$sitel'}{if($2 < '$siter'){if(f_pos-$2>0 && $('$col_add'+'${CC[1]}'-1)>0){printf("%.20f", (f_pos-$2)*$('$col_add'+'${CC[1]}'-1)/100000000);printf("\t")}else{printf("%.20f",1/10^(19));printf("\t")};f_pos=$2}}'`)
+	if (( ${#PB[@]} > 0 )) && (( ${#PR[@]} > 0 ))	
+        then	PROB_LEFT=(`prob_recursive 0`);prob_bad_left=${PROB_LEFT[0]};prob_good_left=${PROB_LEFT[1]}
+	else    echo "No linkage site on the left side: ${i}"; 
+		prob_bad_left=0.5; prob_good_left=0.5; site_flag_left=1; 
+        fi
+	if [[ $site_flag_right = 1 ]] && [[ $site_flag_left = 1 ]]
+	then	echo "No linkage sites for analysis: ${i}"
+		continue;
+	fi
+        prob_bad=`awk 'BEGIN{printf("%.60f", '$prob_bad_right'*'$prob_bad_left'/(('$prob_bad_right'*'$prob_bad_left')+('$prob_good_right'*'$prob_good_left')))}'`
 
-	prob_disease=`awk 'BEGIN{printf("%.20f", '$prob_disease_over_normal'/'$f_dis')}'`	
+	N=`cat $OUT/${pp}_GT_${i}.prob.stata | wc -l`
+	n=`awk 'BEGIN{sum=0}{if($'${CC[1]}' == $'${CC[2]}') sum=sum+1}END{print sum}' $OUT/${pp}_GT_${i}.prob.stata`
+
+	prob_disease=`awk -v OFMT=%.8E 'BEGIN{print '$prob_bad'}'`
 	rt=`awk 'BEGIN{printf("%.4f", '$n'/'$N')}'`
-	ty=`awk 'BEGIN{if('$rt'<=0.4 && '$prob_disease' < 0){print "Normal"}else if('$rt'>=0.6 && '$prob_disease' > 0){print "Bad"}else{print "risk"}}' <<< ""`
+	ty=`awk 'BEGIN{if('$rt'<=0.4 && '$prob_bad'<10^-4){print "Normal"}else if('$rt'>=0.6 && '$prob_bad'>0.9){print "Disease"}else if('$rt'<=0.4 || '$prob_bad'<10^-4){print "Normal_risk"}else if('$rt'>=0.6 || '$prob_bad'>0.9){print "Disease_risk"}else{print "Risk"}}' <<< ""`
 	echo -e "$n / $N = $rt"
 	pposl=`sed -n '1p' $OUT/${pp}_GT_${i}.stata | cut -f 2`
 	pposr=`sed -n '$p' $OUT/${pp}_GT_${i}.stata | cut -f 2`
 	echo -e "$session\t${i}\t$chr\t$pposl\t$pposr\t$n\t$N\t$rt\t$prob_disease\t$ty" >> $OUT/${pp}_report.txt
-
 done
 }
 
@@ -956,44 +1417,92 @@ i=$2
 
 R --slave << RSCRIPT
 
-dat <- read.table("$OUT/${session}_GT_${i}.stata",header = F,stringsAsFactors = F)
-mycol <- c("red","blue")
+dat <- read.table("$OUT/${session}_GT_${i}.prob.stata",sep="",header = F,stringsAsFactors = F)
+mycol <- c("green3","red3","cyan","yellow3","blue3")
 
-do_track <- function(dat,pos,id,risk=F) {
-  plot(0,type = "n",xlim = c($posl,$posr),ylim = c(-1,1),yaxt="n", xlab = "", ylab = "")
-  apply(dat,1,function(x){
-    gt <- sort(unlist(strsplit(x[pos+4],split = "/")))
-    dis=x[8];nor=x[3];if(dis == x[3]){nor=x[4]}
-    if(gt[2]==dis){temp=gt[2];gt[2]=gt[1];gt[1]=temp}
-    lines(x = rep(x[2],2),y = c(0,0.5)+0.01,col=mycol[factor(gt[1],levels = c(dis,nor))])
-    lines(x = rep(x[2],2),y = c(-0.5,0)-0.01,col=mycol[factor(gt[2],levels = c(dis,nor))])
-  })
-  mtext(text = id,side = 2,line = 1)
-  legend(x = "topright",legend = c("Bad", "normal"),fill = mycol,bty = "n")
-  G_add=0;if( $both_mode==1 ){G_add=1}
-  if(risk) {
-    points(x=dat[dat[,8+G_add]==dat[,9+G_add],2],y=rep(-0.9,sum(dat[,8+G_add]==dat[,9+G_add])),pch=17,col="red",cex=0.8)
+do_track <- function(dat,pos,id,plot_id,risk=F) {
+  print("seqA is $seqA")
+  G_add=0;if( ${#seqF[@]}==2 && "$seqA" != ""){G_add=1}
+  x_min=report[$line,4]-1e5; x_max=report[$line,5]+1e5;
+  if(x_min < 0){
+    x_min=0
+  }else if(x_min >= $sitel){
+    x_min=$sitel-5e4
   }
+  if(x_max <= $siter){
+    x_max=$siter+5e4
+  }
+  plot(0,type = "n",xlim = c(x_min,x_max),ylim = c(-1,1),yaxt="n", xlab = "", ylab = "")
+  rect($sitel,-0.5,$siter,0.5,lty="dashed",border="gray")
+  text($sitel,-0.7,"disease site")
+  if(risk){
+    text(x_min,0.7,"P(risk)",cex=0.5,adj=0)
+  }
+  x_prev=x_min; min_d=(x_max-x_min)/500
+  x_prev_risk=x_min; min_d_risk=(x_max-x_min)/60
+  for(line_i in 1:dim(dat)[1]){
+    x=as.vector(as.matrix(dat[line_i,1:dim(dat)[2]]))
+    pos_x=as.numeric(as.character(x[2]))
+    gt <- sort(unlist(strsplit(x[pos+4],split = "/")))
+#    dis=x[8+G_add];nor=x[3];if(dis == x[3]){nor=x[4]}
+#    if(gt[2]==dis){gt[2]=gt[1];gt[1]=dis}
+    if(pos_x-x_prev >= min_d){
+	x_now=pos_x
+    }else{
+	x_now=x_prev+min_d
+    }
+    if(pos_x-x_prev_risk >= min_d_risk){
+	x_now_risk=pos_x
+    }else{
+	x_now_risk=x_prev_risk+min_d_risk
+    }
+    if(nchar(gt[1])>1){gt[1]="indel"}
+    if(nchar(gt[2])>1){gt[2]="indel"}
+    lines(x = rep(x_now,2),y = c(0,0.5)+0.01,col=mycol[factor(gt[1],levels = c("A","T","C","G","indel"))])
+    if(id != "D_allele"){
+      lines(x = rep(x_now,2),y = c(-0.5,0)-0.01,col=mycol[factor(gt[2],levels = c("A","T","C","G","indel"))])
+    }
+    if(risk) {
+      if(x[8+G_add]==x[9+G_add]){
+      	points(x=x_now,y=-0.9,pch=17,col="red",cex=0.8)
+      }
+      text(x=x_now_risk,y=0.7,round(as.numeric(as.character(x[12+G_add])),2),cex=0.5)
+    }
+    x_prev=x_now
+    x_prev_risk=x_now_risk
+    gt=c()
+  }
+  mtext(text = plot_id,side = 2,line = 1)
+  legend(x = "topright",legend = c("A","T","C","G","indel"),fill = mycol,bty = "n", cex=0.5)
 }
 
 report <- read.table("$OUT/${session}_report.txt", header = T,stringsAsFactors = F)
+#G_add=0;if( ${#seqF[@]}==2 && "$seqA" != ""){G_add=1}
+G_add=1
 pdf("$OUT/${session}_${i}_snv.pdf",width = 8,height = 4)
-par(mfrow=c(3,1),mar=c(2,3,1,1),oma=c(3,0,3,0))
-do_track(dat,1,"A")
-do_track(dat,2,"F01")
-add=0; if( $both_mode==1 ){
-	do_track(dat,3,"F02"); add=1
+par(mfrow=c(3+G_add,1),mar=c(2,3,1,1),oma=c(3,0,3,0))
+add_A=0; if("$seqA" != ""){
+	do_track(dat,1,"A","Proband");add_A=1
+}else{
+	do_track(dat,4,"D_allele","D_allele")
 }
-do_track(dat,3+add,"${i}",risk = T)
+do_track(dat,1+add_A,"F01","D_Parent")
+add_F=0; if( ${#seqF[@]}==2 ){
+        do_track(dat,2+add_A,"F02","N_Parent"); add_F=1
+}
+do_track(dat,2+add_A+add_F,"${i}","${i}",risk = T)
 
 par(mfrow=c(1,1),mar=c(c(5,4,3,2)+0.1),oma=c(0,0,0,0))
-title(main = paste0("linkage analysis for SNV: ", "${i}"))
-title(sub = paste("Risk ratio:",report[${line},6+G_add],"/",report[${line},7+G_add],"=",round(report[${line},8+G_add], 4),"log10 odds of disease:", round(report[${line},9+G_add], 4)),cex.sub=0.8)
-if(report[${line},10+G_add] == "Normal") {
-  mtext(text = "Normal",side = 1,line = 3.1,col = "blue")
-} else if(report[${line},10+G_add] == "Bad") {
-  mtext(text = "Bad",side = 1,line = 3.1,col = "red")
+title(main = paste0("linkage analysis for SNV: ", "$session ${i}"))
+title(sub = paste0("Risk ratio:",report[${line},6],"/",report[${line},7],"=",round(report[${line},8], 4),", P disease:", report[${line},9]),cex.sub=0.8)
+if(grepl("Normal",report[${line},10])) {
+	color="blue"
+}else if(grepl("Disease", report[${line},10])) {
+	color="red"
+}else{
+	color="black"
 }
+mtext(text = report[${line},10],side = 1,line = 3.1,col = color)
 
 magic <- dev.off()
 
@@ -1012,45 +1521,51 @@ dat <- read.table("$OUT/${session}_GT_${i}_pb.stata",header = F,stringsAsFactors
 
 mycol <- c("red","blue")
 
-do_track_pb <- function(dat,pos,id,diploid=T,risk=F) {
-  plot(0,type = "n",xlim = c($posl,$posr),ylim = c(-1,1),yaxt="n", xlab = "", ylab = "")
-  apply(dat,1,function(x){
+do_track_pb <- function(dat,pos,id,plot_id,diploid=T,risk=F) {
+  plot(0,type = "n",xlim = c(report[$line,5]-1e5,report[$line,4]+1e5),ylim = c(-1,1),yaxt="n", xlab = "", ylab = "")
+  for(line_i in 1:dim(dat)[1]){
+    x=as.vector(as.matrix(dat[line_i,]))
+    pos_x=as.numeric(as.character(x[2]))
     gt <- sort(unlist(strsplit(x[pos+4],split = "/")))
     dis=x[9];nor=x[3];if(dis == x[3]){nor=x[4]}
+    x_prev=report[$line,4]-1e5; min_d=(report[$line,5]-report[$line,4]+2e5)/500
     if(diploid) {
       if(gt[2]==dis){temp=gt[2];gt[2]=gt[1];gt[1]=temp}
-      lines(x = rep(x[2],2),y = c(0,0.5)+0.01,col=mycol[factor(gt[1],levels = c(dis,nor))])
-      lines(x = rep(x[2],2),y = c(-0.5,0)-0.01,col=mycol[factor(gt[2],levels = c(dis,nor))])
+      if(pos_x-x_prev >= min_d){
+	x_now=pos_x
+      }else{
+	x_now=x_prev+min_d	
+      }
+      lines(x = rep(x_now,2),y = c(0,0.5)+0.01,col=mycol[factor(gt[1],levels = c(dis,nor))])
+      lines(x = rep(x_now,2),y = c(-0.5,0)-0.01,col=mycol[factor(gt[2],levels = c(dis,nor))])
     } else {
-      lines(x = rep(x[2],2),y = c(-0.25,0.25)+0.01,col=mycol[factor(gt[1],levels = c(dis,nor))])
+      lines(x = rep(x_now,2),y = c(-0.25,0.25)+0.01,col=mycol[factor(gt[1],levels = c(dis,nor))])
     }
-  })
-  mtext(text = id,side = 2,line = 1)
-  G_add=0;if( $both_mode==1 ){G_add=1}
-  legend(x = "topright",legend = c("disease","normal"),fill = mycol,bty = "n",cex = 0.62)
-  if(risk) {
-    points(x=dat[dat[,9+G_Add]==dat[,10+G_add],2],y=rep(-0.9,sum(dat[,9+G_add]==dat[,10+G_add])),pch=17,col="red",cex=0.8)
+    if(risk && x[9]==c[10]) {
+	points(x=x_now,y=-0.9,pch=17,col="red",cex=0.8)
+    }
+    x_prev=x_now
   }
+  mtext(text = plot_id,side = 2,line = 1)
+  legend(x = "topright",legend = c("disease","normal"),fill = mycol,bty = "n",cex = 0.62)
+  points(x=dat[dat[,9]==dat[,10],2],y=rep(-0.9,sum(dat[,9]==dat[,10])),pch=17,col="red",cex=0.8)
 }
 
 report <- read.table("$OUT/${session}_report_pb.txt", header = T,stringsAsFactors = F)
 pdf("$OUT/${session}_${i}_pb_snv.pdf",width = 8,height = 4)
 par(mfrow=c(4,1),mar=c(2,3,1,1),oma=c(3,0,3,0))
-do_track_pb(dat,1,"A")
-do_track_pb(dat,2,"F01")
-add=0;if( $both_mode==1 ) {
-	do_track_pb(dat,3,"F02"); add=1
-}
-do_track_pb(dat,3+add,"${i}_1")
-do_track_pb(dat,4+add,"${i}_2",diploid = F,risk = T)
+do_track_pb(dat,1,"A","Proband")
+do_track_pb(dat,2,"F01","D_Parent")
+do_track_pb(dat,3,"${i}_1","${i}_1")
+do_track_pb(dat,4,"${i}_2","${i}_2",diploid = F,risk = T)
 
 par(mfrow=c(1,1),mar=c(c(5,4,3,2)+0.1),oma=c(0,0,0,0))
 title(main = paste0("linkage analysis for SNV: ","$i"))
-title(sub = paste("Risk ratio:",report[${line},6+G_add],"/",report[${line},7+G_add],"=",round(report[${line},8+G_add], 4),"log10 odds of disease:", round(report[${line},9+G_add], 4)),cex.sub=0.8)
-if(report[${line},10+G_add] == "Normal") {
+title(sub = paste("Risk ratio:",report[${line},6],"/",report[${line},7],"=",round(report[${line},8], 4),"log10 odds of disease:", round(report[${line},9], 4)),cex.sub=0.8)
+if(report[${line},10] == "Normal") {
   mtext(text = "Normal",side = 1,line = 3.1,col = "blue")
-} else if(report[${line},10+G_add] == "Bad") {
-  mtext(text = "Bad",side = 1,line = 3.1,col = "red")
+} else if(report[${line},10] == "Disease") {
+  mtext(text = "Disease",side = 1,line = 3.1,col = "red")
 }
 
 magic <- dev.off()
@@ -1100,7 +1615,7 @@ elif [[ $mate -eq 2 ]]
 then
 	mateO=FR
 fi
-#       samtools bedcov $cnv_bin ${OUT}/${session}_${fpp}_rmdup.bam > ${OUT}/${session}_cnv/${session}_${fpp}_3Mb_cnv.txt
+samtools bedcov $cnv_bin ${OUT}/${session}_${fpp}_rmdup.bam > ${OUT}/${session}_cnv/${session}_${fpp}_3Mb_cnv.txt
 cat > $OUT/${session}_cnv/$fpp/${fpp}_XY.freec  << EOF
 
 [general]
@@ -1129,7 +1644,8 @@ mateOrientation = $mateO
 
 EOF
 freec -conf $OUT/${session}_cnv/$fpp/${fpp}_XY.freec #2>> $OUT/run_log.txt
-subtractBed -a <(sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs | uniq) -b $Npos > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
+subtractBed -f 0.5 -A -a <(sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs | uniq) -b $Npos | grep -v "chr[XY]" > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
+subtractBed -a <(sed 's/^/chr/' $OUT/${session}_cnv/$fpp/${session}_${fpp}_rmdup.bam_CNVs | uniq) -b $Npos | grep --color=never "chr[XY]" >> $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed
 awk '{if($3 - $2 > 30000000) print $0}' $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv_long.bed
 cat <(cut -f 1-4 $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed) <(subtractBed -a <(subtractBed -a <(awk '{print $0"\t"2}' data/3Mb.bin) -b $Npos) -b $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.bed) | sort -k 1.4 -V -s -k 2n > $OUT/${session}_cnv/$fpp/${session}_${fpp}_cnv.copy 
 cnv_stat=""; sex_cnv=""; X_2_len=0; Y_0_len=0; for cnv in "gain" "loss"
@@ -1154,7 +1670,15 @@ do
 	done
 done
 echo $sex_cnv
-sex=`awk 'BEGIN{if('$X_2_len' > 0.5 && '$Y_0_len' > 0.5){print "Female"}else{if("'"$sex_cnv"'" == ""){print "Male"}else{print "Unknown"}}}'`
+sex=`awk 'BEGIN{if('$X_2_len' > 0.5 && '$Y_0_len' > 0.5){
+	print "Female"
+}else{
+	if("'"$sex_cnv"'" == "" || '$Y_0_len' < 0.6){
+		print "Male"
+	}else{
+		print "Unknown"
+	}
+}}'`
 if [[ $cnv_stat = "" ]]
 then	echo -e "$input_id\t${fpp}\t${pp}\t$sex\tcnv normal" >> $OUT/${session}_cnv/${session}_cnv_report.txt
 else	echo -e "$input_id\t${fpp}\t${pp}\t$sex\t$cnv_stat" >> $OUT/${session}_cnv/${session}_cnv_report.txt
@@ -1163,28 +1687,138 @@ fi
 
 function do_plot_cnv {
 bin=3Mb
-#for sample in `ls $OUT/*rmdup.bam | sed 's#'${session}'##g' | sed 's#_#\t#g' | cut -f 2`
-#do
-#	samtools bedcov $cnv_bin ${OUT}/${session}_${sample}_rmdup.bam > ${OUT}/${session}_cnv/${session}_${sample}_${bin}_cnv.txt
-#done
-sample0=`sed -n '2p' $OUT/${session}_cnv/${session}_cnv_report.txt | cut -f 2`
-cut -f 1-3 ${OUT}/${session}_cnv/${session}_${sample0}_${bin}_cnv.txt > ${OUT}/${session}_cnv/${bin}_nor_all.txt
-n_l=`cat $OUT/${session}_cnv/${session}_cnv_report.txt | wc -l`; n_line=`echo "scale=0; $n_l - 1" | bc`
-for ll in `seq 1 1 $n_line`
+echo -e "group\tsample" > ${OUT}/sample_group.txt
+for group_i in `seq 0 1 10`
 do
-	line=(`sed '1d' $OUT/${session}_cnv/${session}_cnv_report.txt | sed -n ''${ll}'p'`)
-#	if [[ ${line[4]} != "cnv" ]]
-#Do not use samples with >= 2 chr cnv abnormal as nor factor
-	if (( ${#line[@]} > 6 )) 
-	then 	continue
-	else
-		sample=${line[1]}; ploidy=${line[2]}; gender=${line[3]}; tlength=`awk '{sum=sum+$2}END{print sum}' $chromLen`; binsize=3000000
-		sum=`awk '{sum=sum+$4}END{print sum*'${binsize}'/('$ploidy'*'${tlength}')}' ${OUT}/${session}_cnv/${session}_${sample}_${bin}_cnv.txt`
-		paste ${OUT}/${session}_cnv/${bin}_nor_all.txt <(awk '{if($1 == "'"${line[4]}"'"){print "-1"}else{if("'"$gender"'"=="Male"){if($1 == "chrX" || $1 == "chrY"){print $4/'${sum}'}else{print $4/('$sum' * '${ploidy}')}}else{if($1 == "chrY"){print "-1"}else{print $4/('$sum' * '${ploidy}')}}}}' ${OUT}/${session}_cnv/${session}_${sample}_${bin}_cnv.txt) > ${OUT}/${session}_cnv/${bin}_nor_all.temp.txt 
-		mv ${OUT}/${session}_cnv/${bin}_nor_all.temp.txt ${OUT}/${session}_cnv/${bin}_nor_all.txt
+	if [[ ${cnv_group[$group_i]} != ""  ]]
+	then
+		echo -e "${cnv_group_name[$group_i]}\t${cnv_group[$group_i]}" >> ${OUT}/sample_group.txt
+		sample0=`sed -n '2p' $OUT/${session}_cnv/${session}_cnv_report.txt | cut -f 2`
+		cut -f 1-3 ${OUT}/${session}_cnv/${session}_${sample0}_${bin}_cnv.txt > ${OUT}/${session}_cnv/${bin}_nor_all_${cnv_group_name[$group_i]}.txt
+
+		for sample in ${cnv_group[$group_i]}
+		do
+			line=(`awk '$1 == "'$sample'"' $OUT/${session}_cnv/${session}_cnv_report.txt | sed -n ''${ll}'p'`)
+			sample=${line[1]}; ploidy=${line[2]}; gender=${line[3]}; tlength=`awk '{sum=sum+$2}END{print sum}' $chromLen`; binsize=3000000
+			sum=`awk '{sum=sum+$4}END{print sum*'${binsize}'/('$ploidy'*'${tlength}')}' ${OUT}/${session}_cnv/${session}_${sample}_${bin}_cnv.txt`
+			true_sum=`awk 'BEGIN{sum=0}{sum=sum+$4}END{print sum}' ${OUT}/${session}_cnv/${session}_${sample}_${bin}_cnv.txt`
+			if (( `expr $true_sum \< 3000000` == 1 ))
+			then	continue
+			fi
+			paste ${OUT}/${session}_cnv/${bin}_nor_all_${cnv_group_name[$group_i]}.txt <(awk '{flag=0;for(i=4;i<='${#line[4]}';i=i+2){
+	if($1 == "'"${line[i]}"'"){
+			print "-1"; flag=1
+	}
+};
+if(flag==0){
+	if("'"$gender"'"=="Male"){
+		if('$sample' ~ /^S/ && $1 == "chrX"){
+			print "-1" 
+		}else if('$sample' !~ /^S/ && ($1=="chrX" || $1 == "chrY")){
+			print $4/'${sum}'
+		}else{
+			print $4/('$sum' * '${ploidy}')
+		}
+	}else{if($1 == "chrY"){
+		print "-1"
+	}else{
+		print $4/('$sum' * '${ploidy}')
+	}
+}}}' ${OUT}/${session}_cnv/${session}_${sample}_${bin}_cnv.txt) > ${OUT}/${session}_cnv/${bin}_nor_all_${cnv_group_name[$group_i]}.temp.txt 
+			mv ${OUT}/${session}_cnv/${bin}_nor_all_${cnv_group_name[$group_i]}.temp.txt ${OUT}/${session}_cnv/${bin}_nor_all_${cnv_group_name[$group_i]}.txt
+#	fi
+		done
 	fi
 done
 
+function cnv_norm {
+
+R --slave <<RSCRIPT
+sample_group <- read.table(file="${OUT}/sample_group.txt",header=T,sep="\t")
+#setwd("/Share/BP/xionglx/projects/ivf/marsala/${OUT}")
+chrlen <- read.table("$chr_length",header=T,row.names=1)
+lbin=3000000
+Npos_ori <- read.table("$Npos", header=F)
+Npos_bin <- Npos_ori
+Npos_bin[,2] = floor(Npos_ori[,2] / lbin) * lbin + 1
+Npos_bin[,3] = ceiling(Npos_ori[,3] / lbin) * lbin + 1
+new_Npos_bin <- Npos_bin[!duplicated(Npos_bin),]
+start <- new_Npos_bin[,1:2]
+j=1; for(i in 1:dim(new_Npos_bin)[1]){
+        temp <- seq(new_Npos_bin[i,2],new_Npos_bin[i,3] - lbin ,by=lbin)
+        start[j:(j+length(temp)-1),1] <- rep(new_Npos_bin[i,1],length(temp))
+        start[j:(j+length(temp)-1),2] <- temp 
+        j = j + length(temp)
+}
+Npos_bin_uniq <- start[!duplicated(start),]
+for(cnv_name in sample_group[,1]){
+	nor_all <- read.table(file=paste0("${OUT}/${session}_cnv/${bin}_nor_all_",cnv_name,".txt"),header=F)
+	
+	#LF is not needed anymore, since nor_factor for each sample i is modified by cvi.
+	threshold = 0.7
+	N_line=c(); for (j in paste0("chr",c(1:22,"X","Y"))){
+		N_line <- c(N_line, which(nor_all[,1]==j & ! nor_all[,2]%in%c(Npos_bin_uniq[Npos_bin_uniq[,1]==j,2]-1)))
+	}
+	nor_all_LF <- nor_all[,1:3]; nor_all_HF <- nor_all[,1:3]; col_LF=4; col_HF=4; for (i in 4:dim(nor_all)[2]){
+		dat <- nor_all[N_line,i]; dat <- dat[dat!=-1]
+		if (sd(dat)/mean(dat) <= threshold){
+			nor_all_LF[,col_LF] <- nor_all[,i]; col_LF=col_LF + 1
+		}else{
+			nor_all_HF[,col_HF] <- nor_all[,i]; col_HF=col_HF + 1
+		}
+	}
+	print(dim(nor_all_HF))
+	print(dim(nor_all_LF))
+	if (dim(nor_all_HF)[2] <= 5){
+		nor_all_HF = nor_all
+	}
+	if(dim(nor_all_LF)[2] <= 5){
+		nor_all_LF = nor_all
+	}
+	
+	nor_factor <- nor_all[,1:4];
+	for (cc in paste0("chr", c(1:22,"X","Y"))){
+	        row <- which(nor_all[,1] == cc); dat <- nor_all[row,-(1:3)]
+		if (sum(dat!=-1) > length(row)){
+			nor_factor[row,4] <- apply(dat[,dat[1,]!=-1], 1, median)
+	        	nor_factor[row,5] <- apply(dat[,dat[1,]!=-1], 1, sd)
+		}else{
+			nor_factor[row,4] <- 1
+			nor_factor[row,5]  <- 0
+		}
+	}
+	
+	nor_factor_LF <- nor_all_LF[,1:4]; 
+	for (cc in paste0("chr", c(1:22,"X","Y"))){
+		row <- which(nor_all_LF[,1] == cc); dat <- nor_all_LF[row,-(1:3)]
+		if (sum(dat!=-1) > length(row)){
+			nor_factor_LF[row,4] <- apply(dat[,dat[1,]!=-1], 1, median)
+			nor_factor_LF[row,5] <- apply(dat[,dat[1,]!=-1], 1, sd)
+		}else{
+			nor_factor_LF[row,4] <- nor_factor[row,4]
+			nor_factor_LF[row,5] <- nor_factor[row,5]
+		}
+	}
+	
+	nor_factor_HF <- nor_all_HF[,1:4]; 
+	for (cc in paste0("chr", c(1:22,"X","Y"))){
+		row <- which(nor_all_HF[,1] == cc); dat <- nor_all_HF[row,-(1:3)]
+		if (sum(dat!=-1) > length(row)){
+			nor_factor_HF[row,4] <- apply(dat[,dat[1,]!=-1], 1, median)
+			nor_factor_HF[row,5] <- apply(dat[,dat[1,]!=-1], 1, sd)
+		}else{
+	                nor_factor_HF[row,4] <- nor_factor[row,4]
+	                nor_factor_HF[row,5] <- nor_factor[row,5]
+	        }
+	}
+	
+	nor_factor_LF[is.na(nor_factor_LF[,4]),4] = 1; nor_factor_LF[nor_factor_LF[,4]==0,4] = -1; nor_factor_LF[-N_line,4]=-1
+	nor_factor_HF[is.na(nor_factor_HF[,4]),4] = 1; nor_factor_HF[nor_factor_HF[,4]==0,4] = -1; nor_factor_HF[-N_line,4]=-1
+	write.table(nor_factor_LF, file=paste0("${OUT}/${session}_cnv/${bin}_nor_",cnv_name,"_median_LF.txt"),quote=F,row.names=F,col.names=F)
+	write.table(nor_factor_HF, file=paste0("${OUT}/${session}_cnv/${bin}_nor_",cnv_name,"_median_HF.txt"),quote=F,row.names=F,col.names=F)
+}
+RSCRIPT
+}
 
 function plot_cnv {
 ty=$1
@@ -1195,56 +1829,42 @@ R --slave  << RSCRIPT
 type <- "$ty"
 num <- as.numeric($num)
 
-#setwd("/data1/SX/xionglx/projects/ivf/marsala/${OUT}")
-chrlen <- read.table("$chr_length",header=T,row.names=1)
-nor_all <- read.table(file="${OUT}/${session}_cnv/${bin}_nor_all.txt",header=F)
-
-##LF is not needed anymore, since nor_factor for each sample i is modified by cvi.
-#nor_all_LF <- nor_all[,1:3]; col=4; for (i in 4:dim(nor_all)[2]){
-#	dat <- nor_all[nor_all[,i] != -1,i];
-#	if (sd(dat)/mean(dat) <= 0.7){
-#		nor_all_LF[,col] <- nor_all[,i]; col=col + 1
-#	}
-#}
-
-nor_all_LF <- nor_all; 
-##It turns out that regulates bias of every sample before mean does not help in reducing fluctuation.
-#cv_fix=0.6
-#for(i in 4:dim(nor_all)[2]){
-#	cvi=sd(nor_all[nor_all[,i]!=-1,i])/mean(nor_all[nor_all[,i]!=-1,i]); 
-#	nor_all_LF[,i] <- 1+(nor_all[,i]-1)*cv_fix/cvi	
-#	nor_all_LF[nor_all[,i]==-1,i] <- -1
-#}
-nor_factor <- nor_all_LF[,1:4]; 
-for (cc in paste0("chr", c(1:22,"X","Y"))){
-	row <- which(nor_all_LF[,1] == cc); dat <- nor_all_LF[row,-(1:3)]
-	nor_factor[row,4] <- apply(dat[,dat[1,]!=-1], 1, mean)
-	nor_factor[row,5] <- apply(dat[,dat[1,]!=-1], 1, sd)
+threshold = 0.7
+lbin=3000000
+Npos_ori <- read.table("$Npos", header=F)
+Npos_bin <- Npos_ori
+Npos_bin[,2] = floor(Npos_ori[,2] / lbin) * lbin + 1
+Npos_bin[,3] = ceiling(Npos_ori[,3] / lbin) * lbin + 1
+new_Npos_bin <- Npos_bin[!duplicated(Npos_bin),]
+start <- new_Npos_bin[,1:2]
+j=1; for(i in 1:dim(new_Npos_bin)[1]){
+        temp <- seq(new_Npos_bin[i,2],new_Npos_bin[i,3] - lbin ,by=lbin)
+        start[j:(j+length(temp)-1),1] <- rep(new_Npos_bin[i,1],length(temp))
+        start[j:(j+length(temp)-1),2] <- temp 
+        j = j + length(temp)
 }
-#nor_factor <- read.table("$nor_factor",header=T);nor_factor[,5] <- 0
-cv0=sd(na.omit(nor_factor[,4]))/mean(na.omit(nor_factor[,4]))
-#nor_factor[,4] <- apply(nor_all[,-(1:3)], 1, median) 
-#nor_factor[nor_factor[,1]=="chrY",4] <- apply(dat[,dat[1,]!=-1], 1, median) 
-write.table(nor_factor, file="${OUT}/${session}_cnv/${bin}_nor_median.txt",quote=F,row.names=F,col.names=F)
+Npos_bin_uniq <- start[!duplicated(start),]
+nor_all <- read.table(file=paste0("${OUT}/${session}_cnv/${bin}_nor_all_","${cnv_group_name[1]}",".txt"),header=F)
 
-#nor_factor[,4] <- apply(nor_all[,-(1:3)], 1, mean) 
-#nor_factor[nor_factor[,1]=="chrY",4] <- apply(dat[,dat[1,]!=-1], 1, mean) 
-#write.table(nor_factor, file="${OUT}/${session}_cnv/${bin}_nor_mean.txt",quote=F)
+N_line=c(); for (j in paste0("chr",c(1:22,"X","Y"))){
+	N_line <- c(N_line, which(nor_all[,1]==j & ! nor_all[,2]%in%c(Npos_bin_uniq[Npos_bin_uniq[,1]==j,2]-1)))
+}
 
-#nor_factor <- read.table("$nor_factor",header=T)
-#nor_factor[nor_factor[,4] == 0,4] = -1
+sample_group <- read.table(file="${OUT}/sample_group.txt",header=T,sep="\t")
+#setwd("/Share/BP/xionglx/projects/ivf/marsala/${OUT}")
+chrlen <- read.table("$chr_length",header=T,row.names=1)
 tlength <- sum(chrlen[1,])
 id_readme <- read.table(file=paste0("$OUT/",type,"_id_readme.txt"), header=T, sep="\t", colClasses=c("numeric","character","character"))
-BIN=c("3Mb","500kb"); LBIN=c(3000000, 500000)
+HF_list=c(); BIN=c("3Mb","500kb"); LBIN=c(3000000, 500000)
 for(bb in 1){
         bin=BIN[bb];lbin=LBIN[bb];nor="nor2"
-        filenum=2+num
+        p_list=c(); filenum=num
         pdf(file=paste0("$OUT/${session}_cnv/${session}_",type,"_cnv.pdf"),width=10,height=filenum*2/3)
         par(mfrow=c(1,1),mar=c(3,1,1,1))
         xmax = sum(chrlen[rownames(chrlen)==bin,])
         ymax = 4
         plot(0,0,ylim=c(-2,(ymax + 1) * filenum),pch=21,cex=0.00001, xlim = c(-xmax/32,xmax),ann=FALSE,axes=FALSE)
-        start= 0; col=1; color = c("midnightblue","indianred")
+        start= 0; col=1; color = c("blue3","red3")
 	color_copy=c("blue","red")
         for(jj in c(1:22,"X","Y")){
                 j=paste("chr",jj,sep="")
@@ -1257,29 +1877,36 @@ for(bb in 1){
         if ( type == "PB" ) {
                 cnvF <- read.table(file="$OUT/${session}_cnv/${session}_F01_3Mb_cnv.txt",header=F, sep="\t")
                 cnvF[,5] <- cnvF[,4] * tlength *2 / (sum(as.numeric(cnvF[,4])) * 3000000)
-#		copyF <- read.table(file="$OUT/${session}_cnv/F/${session}_F_cnv.copy",header=F,sep="\t")
+		nor_factor <- read.table(file=paste0("${OUT}/${session}_cnv/${bin}_nor_","${cnv_group_name[1]}","_median_LF.txt"))
+                cnvF[,6] <- cnvF[,5] / nor_factor[,4]
 
-                cvi=sd(cnvF[,5])/mean(cnvF[,5])
-                nor_factor[,5] <- 1+(nor_factor[,4]-1)*cvi/cv0; nor_factor[nor_factor[,4]==0,5] = -1; nor_factor[nor_factor[,5]==0,5] = -1
-                cnvF[,6] <- cnvF[,5] / nor_factor[,5]
-
+		nor_factor <- read.table(file="${OUT}/${session}_cnv/${bin}_nor_PB_median_HF.txt")
                 for (pp in 1:num){
 			print(pp)
                         cnv1 <- read.table(file=paste("$OUT/${session}_cnv/${session}_PB", id_readme[pp,2], "1_3Mb_cnv.txt", sep=""),header=F, sep="\t")    # polar body 1
-#			copy1 <- read.table(file=paste0("$OUT/${session}_cnv/PB", id_readme[pp,2], "1/${session}_PB", id_readme[pp,2], "1_cnv.copy"),header=F, sep="\t")
                         cnv2 <- read.table(file=paste("$OUT/${session}_cnv/${session}_PB", id_readme[pp,2], "2_3Mb_cnv.txt", sep=""),header=F, sep="\t")    # polar body 2
-#			copy2 <- read.table(file=paste0("$OUT/${session}_cnv/PB", id_readme[pp,2], "2/${session}_PB", id_readme[pp,2], "2_cnv.copy"),header=F, sep="\t")
                         cnv1[,5] <- cnv1[,4] * tlength *2 / (sum(as.numeric(cnv1[,4])) * 3000000)
+                        dat <- cnv1[N_line,5]; cvi=sd(dat)/mean(dat)
+                        if ( cvi <= threshold ){
+                                fluc="LF"
+                        }else{
+                                fluc="HF"
+                                HF_list=c(HF_list,id)
+                        }
+			nor_factor <- read.table(file=paste0("${OUT}/${session}_cnv/${bin}_nor_PB_median_",fluc,".txt"))
 
-			cvi=sd(cnv1[,5])/mean(cnv1[,5])
-                	nor_factor[,5] <- 1+(nor_factor[,4]-1)*cvi/cv0; nor_factor[nor_factor[,4]==0,5] = -1; nor_factor[nor_factor[,5]==0,5] = -1
-                	cnv1[,6] <- cnv1[,5] / nor_factor[,5]
+                	cnv1[,6] <- cnv1[,5] / nor_factor[,4]
 
                         cnv2[,5] <- cnv2[,4] * tlength  / (sum(as.numeric(cnv2[,4])) * 3000000)
-
-                        cvi=sd(cnv2[,5])/mean(cnv2[,5])
-                        nor_factor[,5] <- 1+(nor_factor[,4]-1)*cvi/cv0; nor_factor[nor_factor[,4]==0,5] = -1; nor_factor[nor_factor[,5]==0,5] = -1
-                        cnv2[,6] <- cnv2[,5] / nor_factor[,5]
+                        dat <- cnv2[N_line,5]; cvi=sd(dat)/mean(dat)
+                        if ( cvi <= threshold ){
+                                fluc="LF"
+                        }else{
+                                fluc="HF"
+                                HF_list=c(HF_list,id)
+                        }
+			nor_factor <- read.table(file=paste0("${OUT}/${session}_cnv/${bin}_nor_PB_median_",fluc,".txt"))
+                        cnv2[,6] <- cnv2[,5] / nor_factor[,4]
 
                         cnvZ_pre <- cnvF
                         cnvZ_pre[,5] <- cnvF[,5]*2 - cnv1[,5] - cnv2[,5]
@@ -1291,10 +1918,10 @@ for(bb in 1){
                 }
         }
 
-        for(id in c(num:1,"F01","A")){
+        for(id in c(num:1,p_list)){
 		print(id)
                 ploidy = 2; mark <- id
-                if (id %in% c("A","F01")){
+                if (id %in% p_list){
                         cnv <- read.table(file=paste("$OUT/${session}_cnv/${session}_", id, "_3Mb_cnv.txt", sep=""),header=F, sep="\t")
                         cnv[,5] <- cnv[,4] * tlength *2 / (sum(as.numeric(cnv[,4])) * 3000000)
 #			copy <- read.table(file=paste0("$OUT/${session}_cnv/",id,"/${session}_",id,"_cnv.copy"),header=F,sep="\t")
@@ -1309,28 +1936,38 @@ for(bb in 1){
                         ploidy = 1; mark <- paste("Z", substr(id_readme[id,3],3,5) ,"_pred", sep="")
                 }
 		if ( dim(cnv)[2] == 5 ){
-			cvi=sd(cnv[,5])/mean(cnv[,5])
-			nor_factor[,6] <- 1+(nor_factor[,4]-1)*cvi/cv0; nor_factor[nor_factor[,4]==0,6] = -1; nor_factor[nor_factor[,6]==0,5] = -1
-                	cnv[,6] <- cnv[,5] / nor_factor[,6]
+			for(group_i in 1:dim(sample_group)[1]){
+				SAMPLES=unlist(strsplit(as.character(sample_group[group_i,2])," "))
+				if(id_readme[id,3] %in% SAMPLES){
+					cnv_name=sample_group[group_i,1]
+					break
+				}
+			}
+		
+			dat <- cnv[N_line,5]
+			cvi=sd(dat)/mean(dat)
+			if ( cvi <= threshold ){
+				fluc="LF"
+			}else{
+				fluc="HF"
+				HF_list=c(HF_list,id)
+			}
+			nor_factor <- read.table(file=paste0("${OUT}/${session}_cnv/${bin}_nor_",cnv_name,"_median_",fluc,".txt"))
+			print(paste0("${OUT}/${session}_cnv/${bin}_nor_",cnv_name,"_median_",fluc,".txt"))
+			cnv[,6] <- cnv[,5] / nor_factor[,4]
 		}
+		
+		
                 col = 1; start = 0; column = 6; zoom = 0.3; ymax = 4; copy_col=4
                 cnv[cnv[,column] >= ymax,column] = ymax; cnv[cnv[,column] < 0,column] <- 0;
 #		if( type != "PB" ){
 #                copy[copy[,copy_col] >= ymax,copy_col] = ymax; copy[copy[,copy_col] < 0,copy_col] <- 0;
 #		}
                 for(j in c(paste("chr",c(1:22,"X","Y"), sep=""))){
-                        i = which(cnv[,1]==j & cnv[,column] != 0 & cnv[,column] != 4 )
+			i = which(cnv[,1]==j & ! cnv[,2]%in%c(Npos_bin_uniq[Npos_bin_uniq[,1]==j,2]-1))	
 			for(lline in i){
-#				lower_limit <- ploidy*nor_factor[lline,4] - 10*ploidy*(nor_factor[lline,5]);if(lower_limit < 0){lower_limit=0}
-#				upper_limit <- ploidy*nor_factor[lline,4] + 10*ploidy*(nor_factor[lline,5]);if(upper_limit > 4){upper_limit=4}
 				lower_limit=0;upper_limit=4
-				adjcent <- cnv[lline,column] <= lower_limit && cnv[lline,column] >= upper_limit && ((cnv[lline-1,column] <= lower_limit && cnv[lline-1,column] >= upper_limit) || (cnv[lline+1,column] <= lower_limit && cnv[lline+1,column] >= upper_limit))
-				if(length(cnv[lline-1,column])==0 || is.na(cnv[lline-1,column])){
-					adjcent <- cnv[lline,column] <= lower_limit && cnv[lline,column] >= upper_limit && cnv[lline+1,column] <= lower_limit && cnv[lline+1,column] >= upper_limit
-				}else if(length(cnv[lline+1,column])==0 || is.na(cnv[lline+1,column])){
-					adjcent <- cnv[lline,column] <= lower_limit && cnv[lline,column] >= upper_limit && cnv[lline-1,column] <= lower_limit && cnv[lline-1,column] >= upper_limit
-				}
-				if ((cnv[lline,column] >= lower_limit && cnv[lline,column] <= upper_limit) || adjcent){
+				if ((cnv[lline,column] > lower_limit && cnv[lline,column] < upper_limit)){
                         		points(cnv[lline,2] + start,cnv[lline,column] + 1 + (ymax + 1)* row,pch=16,cex=zoom,col = color[col])
 				}
 			}
@@ -1348,16 +1985,19 @@ for(bb in 1){
                 segments(0,4 + (ymax + 1)* row,xmax,4 + (ymax + 1)* row,lty="dotted")
                 rect(0,1 - 0.1 + (ymax + 1)* row,xmax,5 + 0.1 + (ymax + 1)* row)
                 text(-xmax/24,3 + (ymax + 1)* row, mark, cex=0.6)
-#                text(100000, ymax + 1.1 + (ymax + 1)* row, paste(id," ",bin," ",nor,"  mapped_depth:",round(mapped_depth,4),"  coverage:",round(coverage,4),sep=" "),adj=0,cex=0.6)
+		cv=sd(cnv[N_line,column])/mean(cnv[N_line,column])
+                text(100000, ymax + 1.1 + (ymax + 1)* row, paste(id," ",bin," ",nor,"  cv:",round(cv,4),sep=" "),adj=0,cex=0.6)
                 row = row + 1
         }
         dev.off()
+	write.table(HF_list,"$OUT/${session}_cnv/${session}_HF_list.txt",quote=F,col.names=F,row.names=F)
 }
 
 RSCRIPT
 
 }
 
+cnv_norm
 if (( $np1_num > 0 ))
 then	plot_cnv PB $np1_num
 fi
@@ -1367,102 +2007,128 @@ plot_cnv Z $ecount
 
 
 ####### Run
+if [ "$seqA" != "" ]
+then	do_bwa $session A "$seqA" 	# "" avoid missing mate2
+fi
+if [ "${seqF[0]}" != "" ]
+then	do_bwa $session F01 "${seqF[0]}" 
+fi
+if [ "${seqF[1]}" != "" ]
+then	do_bwa $session F02 "${seqF[1]}" 
+fi
+for ppb in `seq $np1_num`
+do
+	gpb=$(($ppb - 1)); pb=`printf "%02d" $ppb`
+	echo `date` "do_bwa $session PB${pb}1 ${np1_seq[$gpb]} started"
+	do_bwa $session PB${pb}1 "${np1_seq[$gpb]}" 	# pb1 from embryo pb
+	echo `date` "do_bwa $session PB${pb}1 ${np1_seq[$gpb]} ended"
+	echo `date` "do_bwa $session PB${pb}2 ${np1_seq[$gpb]} ended"
+	do_bwa $session PB${pb}2 "${np2_seq[$gpb]}" 	# pb2 from embryo pb
+	echo `date` "do_bwa $session PB${pb}2 ${np1_seq[$gpb]} ended"
+done
 
-#do_bwa $session A "$seqA" 	# "" avoid missing mate2
-#do_bwa $session F01 "${seqF[0]}" 
-#do_bwa $session F02 "${seqF[1]}" 
-#for ppb in `seq $np1_num`
-#do
-#	gpb=$(($ppb - 1)); pb=`printf "%02d" $ppb`
-#	echo `date` "do_bwa $session PB${pb}1 ${np1_seq[$gpb]} started"
-#	do_bwa $session PB${pb}1 "${np1_seq[$gpb]}" 	# pb1 from embryo pb
-#	echo `date` "do_bwa $session PB${pb}1 ${np1_seq[$gpb]} ended"
-#	echo `date` "do_bwa $session PB${pb}2 ${np1_seq[$gpb]} ended"
-#	do_bwa $session PB${pb}2 "${np2_seq[$gpb]}" 	# pb2 from embryo pb
-#	echo `date` "do_bwa $session PB${pb}2 ${np1_seq[$gpb]} ended"
-#done
-#
-#for ee in `seq $ecount`
-#do
-#	ge=$(($ee - 1)); e=`printf "%02d" $ee`
-#	echo "do_bwa $session Z${i} ${seqE[$gi]}"
-#	do_bwa $session Z${e} "${seqE[$ge]}"  
-#done
-#
-## ----------------
-#do_GATK ${session}_A 
-#do_GATK ${session}_F01 
-#do_GATK ${session}_F02
-#for ii in `seq $np1_num`
-#do
-#	i=`printf "%02d" $ii`
-#        do_GATK ${session}_PB${i}1 
-#        do_GATK ${session}_PB${i}2 
-#done
-#
-#for ii in `seq $ecount`
-#do
-#	i=`printf "%02d" $ii`
-#	do_GATK ${session}_Z${i} 
-#done
-#
-#wait
+for ee in `seq $ecount`
+do
+	ge=$(($ee - 1)); e=`printf "%02d" $ee`
+	echo "do_bwa $session Z${i} ${seqE[$gi]}"
+	do_bwa $session Z${e} "${seqE[$ge]}"  
+done
 
-## ----------------
-#do_call_snp $session
+for ss in `seq $scount`
+do
+	gs=$(($ss - 1)); s=`printf "%02d" $ss`
+	echo "do_bwa $session S${i} ${seqS[$gs]}"
+	do_bwa $session S${s} "${seqS[$gs]}"
+done
+# ----------------
+if [[ $snv_mode = 1 ]]
+then
+	if [[ "$seqA" != "" ]]
+	then	do_GATK ${session}_A 
+	fi
+	do_GATK ${session}_F01 
+	if [[ "${seqF[1]}" != "" ]]
+	then	do_GATK ${session}_F02
+	fi
+	for ii in `seq $np1_num`
+	do
+		i=`printf "%02d" $ii`
+	        do_GATK ${session}_PB${i}1 
+	        do_GATK ${session}_PB${i}2 
+	done
+	
+	for ii in `seq $ecount`
+	do
+		i=`printf "%02d" $ii`
+		do_GATK ${session}_Z${i} 
+	done
+	
+	for ii in `seq $scount`
+	do
+		i=`printf "%02d" $ii`
+	        do_GATK ${session}_S${i}
+	done
+	wait
 
+### ----------------
 
-do_phasing $session
-do_plot_snv_both
+	do_call_snp $session
 
+	do_phasing $session
+	do_plot_snv_both
+fi
 
 # ----------------
-#echo -e "input_id\tfilename_id\tploidy\tsex\tcnv_state" > $OUT/${session}_cnv/${session}_cnv_report.txt
-#do_call_cnv A `do_end "$seqA"` 2 A
-#do_call_cnv F `do_end "$seqF"` 2 F
-#echo -e "id_order\tid_filename\tid_input" > $OUT/PB_id_readme.txt
-#for ppb in `seq $np1_num`
-#do
-#	gi=$(($ppb - 1)); pb=`printf "%02d" $ppb` 
-#	echo -e "$ppb\t${pb}\t${numnp1[$gi]}" >> $OUT/PB_id_readme.txt
-#	do_call_cnv PB${pb}1 `do_end "${np1_seq[$gi]}"` 2 ${numnp1[$gi]}1
-#	do_call_cnv PB${pb}2 `do_end "${np2_seq[$gi]}"` 1 ${numnp1[$gi]}2
-#done
-#echo -e "id_order\tid_filename\tid_input" > $OUT/Z_id_readme.txt
-#for ii in `seq 1 1 $ecount`
-#do
-#	gi=$(($ii - 1)); i=`printf "%02d" $ii` 
-#	echo -e "$ii\t$i\t${numE[$gi]}" >> $OUT/Z_id_readme.txt
-#	do_call_cnv Z${i} `do_end "${seqE[$gi]}"` 2 ${numE[$gi]}
-#done
+if [[ $cnv_mode != 0 ]]
+then
+	mkdir -p $OUT/${session}_cnv/
+	echo -e "input_id\tfilename_id\tploidy\tsex\tcnv_state" > $OUT/${session}_cnv/${session}_cnv_report.txt
+	if [[ "$seqA" != "" ]]
+	then	do_call_cnv A `do_end "$seqA"` 2 A
+	fi
+	if [[ "${seqF[0]}" != "" ]]
+	then	do_call_cnv F01 `do_end "${seqF[0]}"` 2 F01
+	fi
+	if [[ "${seqF[1]}" != "" ]]
+	then	do_call_cnv F02 `do_end "${seqF[1]}"` 2 F02
+	fi
+	echo -e "id_order\tid_filename\tid_input" > $OUT/PB_id_readme.txt
+	for ppb in `seq $np1_num`
+	do
+		gi=$(($ppb - 1)); pb=`printf "%02d" $ppb` 
+		echo -e "$ppb\t${pb}\t${numnp1[$gi]}" >> $OUT/PB_id_readme.txt
+		do_call_cnv PB${pb}1 `do_end "${np1_seq[$gi]}"` 2 ${numnp1[$gi]}1
+		do_call_cnv PB${pb}2 `do_end "${np2_seq[$gi]}"` 1 ${numnp1[$gi]}2
+	done
+	echo -e "id_order\tid_filename\tid_input" > $OUT/Z_id_readme.txt
+	for ii in `seq 1 1 $ecount`
+	do
+		gi=$(($ii - 1)); i=`printf "%02d" $ii` 
+		echo -e "$ii\t$i\t${numE[$gi]}" >> $OUT/Z_id_readme.txt
+		do_call_cnv Z${i} `do_end "${seqE[$gi]}"` 2 ${numE[$gi]}
+	done
+	if (( $scount > 0 )) && [[ ${cnv_group[2]} =~ .*S.* ]]
+	then	echo -e "id_order\tid_filename\tid_input" > $OUT/S_id_readme.txt
+		for ii in `seq 1 1 $scount`
+		do
+			gi=$(($ii - 1)); i=`printf "%02d" $ii`
+			echo -e "$ii\t$i\t${numS[$gi]}" >> $OUT/S_id_readme.txt	
+			do_call_cnv S${i} `do_end "${seqS[$gi]}"` 1 ${numS[$gi]}
+		done
+	fi
+	
+	
+	do_plot_cnv
+fi
 #
-#do_plot_cnv
-
-#echo -e "input_id\tfilename_id\tploidy\tsex\tcnv_state" > $OUT/${session}_cnv/${session}_cnv_ctrl_report.txt
-#do_call_cnv_ctrl A `do_end "$seqA"` 2 A
-#do_call_cnv_ctrl F `do_end "$seqF"` 2 F
-#for ppb in `seq $np1_num`
-#do
-#       gi=$(($ppb - 1)); pb=`printf "%02d" $ppb` 
-#       do_call_cnv_ctrl PB${pb}1 `do_end "${np1_seq[$gi]}"` 2 ${numnp1[$gi]}1
-#       do_call_cnv_ctrl PB${pb}2 `do_end "${np2_seq[$gi]}"` 1 ${numnp1[$gi]}2
-#done
-#for ii in `seq $ecount`
-#do
-#       gi=$(($ii - 1)); i=`printf "%02d" $ii` 
-#       do_call_cnv_ctrl Z${i} `do_end "${seqE[$gi]}"` 2 ${numE[$gi]}
-#done
-
-
 echo "---------"
-#rm -f $OUT/${session}_*_sorted.bam 
-#rm -f $OUT/${session}_*_rmdup.bam $OUT/${session}_*_rmdup.bam.bai $OUT/${session}_*_rmdup.txt
-#rm -f $OUT/${session}_*_realignment_targets.list $OUT/${session}_*_realigned_reads.bam $OUT/${session}_*_realigned_reads.bai 
-#rm -f $OUT/${session}_*_recal_data.table $OUT/${session}_*_post_recal_data.table $OUT/${session}_*_recal_reads.bam $OUT/${session}_*_recal_reads.bai
-#rm -f $OUT/${session}_*.raw_snps.indels.g.vcf $OUT/${session}_*.raw_snps.indels.g.vcf.idx 
-#rm -f $OUT/${session}_AFE.raw_snps.indels.vcf $OUT/${session}_AFE.raw_snps.indels.vcf.idx
-#rm -f $OUT/${session}_DP.txt $OUT/${session}_GT_*.diff
+rm -f $OUT/${session}_*_sorted.bam 
+rm -f $OUT/${session}_*_rmdup.bam $OUT/${session}_*_rmdup.bam.bai $OUT/${session}_*_rmdup.txt
+rm -f $OUT/${session}_*_realignment_targets.list $OUT/${session}_*_realigned_reads.bam $OUT/${session}_*_realigned_reads.bai 
+rm -f $OUT/${session}_*_recal_data.table $OUT/${session}_*_post_recal_data.table $OUT/${session}_*_recal_reads.bam $OUT/${session}_*_recal_reads.bai
+rm -f $OUT/${session}_*.raw_snps.indels.g.vcf $OUT/${session}_*.raw_snps.indels.g.vcf.idx 
+rm -f $OUT/${session}_AFE.raw_snps.indels.vcf $OUT/${session}_AFE.raw_snps.indels.vcf.idx
+rm -f $OUT/${session}_DP.txt $OUT/${session}_GT_*.diff
 
 echo "All Done."
 
-set +x
