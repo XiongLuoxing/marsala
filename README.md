@@ -89,6 +89,7 @@ Configure the package, specifying the install path of required tools as needed
 Go to the folder data/, Download dbsnp frequency file, download to the this folder from GTAK Resource bundle as suggested:
 https://software.broadinstitute.org/gatk/guide/article?id=1213
 Extract the columns using commands:
+
 bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%CAF\t\n' [The downloaded dbSNP file.] > dbsnp_138.freq
 Example of file dbSNP_138.freq:
 chrM    64      C       T       [0.9373,0.06268]
