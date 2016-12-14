@@ -65,6 +65,9 @@ http://bioinfo-out.curie.fr/projects/freec/
 bedtools [v2.25.0] <br />
 http://bedtools.readthedocs.io/en/latest/
 
+picard [1.119] <br />
+http://broadinstitute.github.io/picard/
+
 If necessary, you are recommended to change the commands in file marsala, to fit in the version of pragram with the parameters we use now. 
 
 ## Obtaining and intalling Marsala
