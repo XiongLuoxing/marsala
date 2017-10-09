@@ -1,6 +1,6 @@
 # marsala
 Welcome to marsala. <br />
-The main site was http://xielab.github.io/marsala
+The main site was https://github.com/XiongLuoxing/marsala
 
 ## What is Marsala?
 Marsala is a program that comprehensively detects variants (SNV and CNV) in PGS with linkage analysis. Marsala runs on Linux.
