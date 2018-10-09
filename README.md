@@ -86,7 +86,10 @@ Configure the package, specifying the install path of required tools as needed
 
 `./configure`
 
-Go to the folder data/, Download dbsnp frequency file, download to the this folder from GTAK Resource bundle as suggested:
+## Prepare frequence and mask file
+
+Go to the folder data/, 
+1. Download dbsnp frequency file, download to the this folder from GTAK Resource bundle as suggested:
 https://software.broadinstitute.org/gatk/guide/article?id=1213
 Extract the columns using commands:
 
@@ -96,7 +99,12 @@ chrM    64      C       T       [0.9373,0.06268]
 chrM    72      T       C       [0.9878,0.01123]
 chrM    93      A       G       [0.9663,0.03368]
 chrM    97      G       A       [0.9972,0.002806]
+2. Download and extract genome mask file from LiHeng's github using following commands:
 
+wget https://github.com/lh3/sgdp-fermi/releases/download/v1/sgdp-263-hs37d5.tgz
+tar zxvf sgdp-263-hs37d5.tgz -C ./
+gzip -d um75-hs37d5.bed.gz
+sed -i 's#^#chr#' um75-hs37d5.bed
 
 ## Using Marsala
 
