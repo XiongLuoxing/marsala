@@ -10,7 +10,6 @@
 # support MARSALA_BAYESIAN/p+,pb+
 # support MARSALA_BAYESIAN/p-
 # support MARSALA_BAYESIAN/p-,s-
-set -x
 VERSION="v2.0.0 beta, 9/26/2018"
 
 
